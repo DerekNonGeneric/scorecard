@@ -15,20 +15,21 @@
 package raw
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/fileparser"
-	"github.com/ossf/scorecard/v4/clients"
-	"github.com/ossf/scorecard/v4/finding"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/fileparser"
+	"github.com/ossf/scorecard/v5/clients"
+	"github.com/ossf/scorecard/v5/finding"
 )
 
 const (
 	dependabotID = 49699333
 )
 
-// DependencyUpdateTool is the exported name for Depdendency-Update-Tool.
+// DependencyUpdateTool is the exported name for Dependency-Update-Tool.
 func DependencyUpdateTool(c clients.RepoClient) (checker.DependencyUpdateToolData, error) {
 	var tools []checker.Tool
 	err := fileparser.OnAllFilesDo(c, checkDependencyFileExists, &tools)
@@ -42,7 +43,13 @@ func DependencyUpdateTool(c clients.RepoClient) (checker.DependencyUpdateToolDat
 
 	commits, err := c.SearchCommits(clients.SearchCommitsOptions{Author: "dependabot[bot]"})
 	if err != nil {
-		return checker.DependencyUpdateToolData{}, fmt.Errorf("%w", err)
+		// TODO https://github.com/ossf/scorecard/issues/1709
+		// some repo clients (e.g. local) don't currently have the ability to search commits,
+		// but some data is better than none.
+		if errors.Is(err, clients.ErrUnsupportedFeature) {
+			return checker.DependencyUpdateToolData{Tools: tools}, nil
+		}
+		return checker.DependencyUpdateToolData{}, fmt.Errorf("dependabot commit search: %w", err)
 	}
 
 	for i := range commits {
@@ -85,9 +92,16 @@ var checkDependencyFileExists fileparser.DoWhileTrueOnFilename = func(name strin
 			},
 		})
 
-		// https://docs.renovatebot.com/configuration-options/
-	case ".github/renovate.json", ".github/renovate.json5", ".renovaterc.json", "renovate.json",
-		"renovate.json5", ".renovaterc":
+	// https://docs.renovatebot.com/configuration-options/
+	case "renovate.json",
+		"renovate.json5",
+		".github/renovate.json",
+		".github/renovate.json5",
+		".gitlab/renovate.json",
+		".gitlab/renovate.json5",
+		".renovaterc",
+		".renovaterc.json",
+		".renovaterc.json5":
 		*ptools = append(*ptools, checker.Tool{
 			Name: "RenovateBot",
 			URL:  asPointer("https://github.com/renovatebot/renovate"),
@@ -113,11 +127,17 @@ var checkDependencyFileExists fileparser.DoWhileTrueOnFilename = func(name strin
 				},
 			},
 		})
-	case ".lift.toml", ".lift/config.toml":
+	// https://github.com/scala-steward-org/scala-steward/blob/main/docs/repo-specific-configuration.md
+	case ".scala-steward.conf",
+		"scala-steward.conf",
+		".github/.scala-steward.conf",
+		".github/scala-steward.conf",
+		".config/.scala-steward.conf",
+		".config/scala-steward.conf":
 		*ptools = append(*ptools, checker.Tool{
-			Name: "Sonatype Lift",
-			URL:  asPointer("https://lift.sonatype.com"),
-			Desc: asPointer("Automated dependency updates. Multi-platform and multi-language."),
+			Name: "scala-steward",
+			URL:  asPointer("https://github.com/scala-steward-org/scala-steward"),
+			Desc: asPointer("Works with Maven, Mill, sbt, and Scala CLI."),
 			Files: []checker.File{
 				{
 					Path:   name,
@@ -126,15 +146,17 @@ var checkDependencyFileExists fileparser.DoWhileTrueOnFilename = func(name strin
 				},
 			},
 		})
-	default:
-		// Continue iterating.
-		return true, nil
 	}
 
-	// We found a file, no need to continue iterating.
-	return false, nil
+	// Continue iterating, even if we have found a tool.
+	// It's needed for all probes results to be populated.
+	return true, nil
 }
 
 func asPointer(s string) *string {
 	return &s
+}
+
+func asBoolPointer(b bool) *bool {
+	return &b
 }

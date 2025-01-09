@@ -21,20 +21,20 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks"
-	"github.com/ossf/scorecard/v4/clients"
-	"github.com/ossf/scorecard/v4/clients/githubrepo"
-	"github.com/ossf/scorecard/v4/clients/gitlabrepo"
-	"github.com/ossf/scorecard/v4/clients/localdir"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks"
+	"github.com/ossf/scorecard/v5/clients"
+	"github.com/ossf/scorecard/v5/clients/githubrepo"
+	"github.com/ossf/scorecard/v5/clients/gitlabrepo"
+	"github.com/ossf/scorecard/v5/clients/localdir"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 	Context("E2E TEST:Validating security policy", func() {
 		It("Should return valid security policy", func() {
 			dl := scut.TestDetailLogger{}
-			repo, err := githubrepo.MakeGithubRepo("tensorflow/tensorflow")
+			repo, err := githubrepo.MakeGithubRepo("ossf-tests/scorecard-check-security-policy-e2e")
 			Expect(err).Should(BeNil())
 			repoClient := githubrepo.CreateGithubRepoClient(context.Background(), logger)
 			err = repoClient.InitRepo(repo, clients.HeadSHA, 0)
@@ -55,15 +55,15 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			}
 			result := checks.SecurityPolicy(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "policy found", &expected, &result, &dl)
 			Expect(repoClient.Close()).Should(BeNil())
 		})
 		It("Should return valid security policy at commitSHA", func() {
 			dl := scut.TestDetailLogger{}
-			repo, err := githubrepo.MakeGithubRepo("tensorflow/tensorflow")
+			repo, err := githubrepo.MakeGithubRepo("ossf-tests/scorecard-check-security-policy-e2e")
 			Expect(err).Should(BeNil())
 			repoClient := githubrepo.CreateGithubRepoClient(context.Background(), logger)
-			err = repoClient.InitRepo(repo, "e0cb70344e46276b37d65824f95eca478080de4a", 0)
+			err = repoClient.InitRepo(repo, "46e9bc6538b2f788b6e3d18f8c8c174146565e93", 0)
 			Expect(err).Should(BeNil())
 
 			req := checker.CheckRequest{
@@ -81,59 +81,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			}
 			result := checks.SecurityPolicy(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
-			Expect(repoClient.Close()).Should(BeNil())
-		})
-		It("Should return valid security policy for rust repositories", func() {
-			dl := scut.TestDetailLogger{}
-			repo, err := githubrepo.MakeGithubRepo("randombit/botan")
-			Expect(err).Should(BeNil())
-			repoClient := githubrepo.CreateGithubRepoClient(context.Background(), logger)
-			err = repoClient.InitRepo(repo, clients.HeadSHA, 0)
-			Expect(err).Should(BeNil())
-
-			req := checker.CheckRequest{
-				Ctx:        context.Background(),
-				RepoClient: repoClient,
-				Repo:       repo,
-				Dlogger:    &dl,
-			}
-			expected := scut.TestReturn{
-				Error:         nil,
-				Score:         checker.MaxResultScore,
-				NumberOfWarn:  0,
-				NumberOfInfo:  4,
-				NumberOfDebug: 0,
-			}
-			result := checks.SecurityPolicy(&req)
-			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
-			Expect(repoClient.Close()).Should(BeNil())
-		})
-		It("Should return valid security policy for rust repositories at commitSHA", func() {
-			dl := scut.TestDetailLogger{}
-			repo, err := githubrepo.MakeGithubRepo("randombit/botan")
-			Expect(err).Should(BeNil())
-			repoClient := githubrepo.CreateGithubRepoClient(context.Background(), logger)
-			err = repoClient.InitRepo(repo, "bab40cdd29d19e0638cf1301dfd355c52b94d1c0", 0)
-			Expect(err).Should(BeNil())
-
-			req := checker.CheckRequest{
-				Ctx:        context.Background(),
-				RepoClient: repoClient,
-				Repo:       repo,
-				Dlogger:    &dl,
-			}
-			expected := scut.TestReturn{
-				Error:         nil,
-				Score:         checker.MaxResultScore,
-				NumberOfWarn:  0,
-				NumberOfInfo:  4,
-				NumberOfDebug: 0,
-			}
-			result := checks.SecurityPolicy(&req)
-			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "policy found", &expected, &result, &dl)
 			Expect(repoClient.Close()).Should(BeNil())
 		})
 		It("Should return valid security policy for local repoClient at head", func() {
@@ -144,7 +92,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			defer os.RemoveAll(tmpDir)
 
 			_, e := git.PlainClone(tmpDir, false, &git.CloneOptions{
-				URL: "http://github.com/ossf-tests/botan",
+				URL: "http://github.com/ossf-tests/scorecard-check-security-policy-e2e",
 			})
 			Expect(e).Should(BeNil())
 
@@ -170,7 +118,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			}
 			result := checks.SecurityPolicy(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "policy found", &expected, &result, &dl)
 			Expect(x.Close()).Should(BeNil())
 		})
 		It("Should return valid security policy - GitLab", func() {
@@ -180,7 +128,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			// project url is gitlab.com/bramw/baserow.
 			repo, err := gitlabrepo.MakeGitlabRepo("gitlab.com/ossf-test/baserow")
 			Expect(err).Should(BeNil())
-			repoClient, err := gitlabrepo.CreateGitlabClientWithToken(context.Background(), os.Getenv("GITLAB_AUTH_TOKEN"), repo)
+			repoClient, err := gitlabrepo.CreateGitlabClient(context.Background(), repo.Host())
 			Expect(err).Should(BeNil())
 			err = repoClient.InitRepo(repo, clients.HeadSHA, 0)
 			Expect(err).Should(BeNil())
@@ -201,7 +149,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			}
 			result := checks.SecurityPolicy(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "policy found", &expected, &result, &dl)
 			Expect(repoClient.Close()).Should(BeNil())
 		})
 		It("Should return valid security policy at commitSHA - GitLab", func() {
@@ -211,7 +159,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			// project url is gitlab.com/bramw/baserow.
 			repo, err := gitlabrepo.MakeGitlabRepo("gitlab.com/ossf-test/baserow")
 			Expect(err).Should(BeNil())
-			repoClient, err := gitlabrepo.CreateGitlabClientWithToken(context.Background(), os.Getenv("GITLAB_AUTH_TOKEN"), repo)
+			repoClient, err := gitlabrepo.CreateGitlabClient(context.Background(), repo.Host())
 			Expect(err).Should(BeNil())
 			// url to commit is https://gitlab.com/bramw/baserow/-/commit/28e6224b7d86f7b30bad6adb6b42f26a814c2f58
 			err = repoClient.InitRepo(repo, "28e6224b7d86f7b30bad6adb6b42f26a814c2f58", 0)
@@ -233,7 +181,7 @@ var _ = Describe("E2E TEST:"+checks.CheckSecurityPolicy, func() {
 			}
 			result := checks.SecurityPolicy(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "policy found", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "policy found", &expected, &result, &dl)
 			Expect(repoClient.Close()).Should(BeNil())
 		})
 	})

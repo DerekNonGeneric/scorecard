@@ -21,9 +21,9 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ossf/scorecard/v4/checker"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	"github.com/ossf/scorecard/v4/rule"
+	"github.com/ossf/scorecard/v5/checker"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	"github.com/ossf/scorecard/v5/finding"
 )
 
 func TestRepeatedSetup(t *testing.T) {
@@ -66,7 +66,6 @@ func (s stubDigester) Digest(name string) (string, error) {
 	}
 	hash, ok := m[name]
 	if !ok {
-		//nolint:goerr113
 		return "", fmt.Errorf("no hash for image: %q", name)
 	}
 	return fmt.Sprintf("sha256:%s", hash), nil
@@ -75,14 +74,13 @@ func (s stubDigester) Digest(name string) (string, error) {
 func TestCreateDockerfilePinningRemediation(t *testing.T) {
 	t.Parallel()
 
-	//nolint:govet,lll
 	tests := []struct {
-		name     string
+		expected *finding.Remediation
 		dep      checker.Dependency
-		expected *rule.Remediation
+		name     string
 	}{
 		{
-			name:     "no depdendency",
+			name:     "no dependency",
 			dep:      checker.Dependency{},
 			expected: nil,
 		},
@@ -92,7 +90,7 @@ func TestCreateDockerfilePinningRemediation(t *testing.T) {
 				Name: asPointer("foo"),
 				Type: checker.DependencyUseTypeDockerfileContainerImage,
 			},
-			expected: &rule.Remediation{
+			expected: &finding.Remediation{
 				Text:     "pin your Docker image by updating foo to foo@sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
 				Markdown: "pin your Docker image by updating foo to foo@sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
 			},
@@ -105,7 +103,7 @@ func TestCreateDockerfilePinningRemediation(t *testing.T) {
 				PinnedAt: asPointer("11"),
 				Type:     checker.DependencyUseTypeDockerfileContainerImage,
 			},
-			expected: &rule.Remediation{
+			expected: &finding.Remediation{
 				Text:     "pin your Docker image by updating amazoncorretto:11 to amazoncorretto:11@sha256:b1a711069b801a325a30885f08f5067b2b102232379750dda4d25a016afd9a88",
 				Markdown: "pin your Docker image by updating amazoncorretto:11 to amazoncorretto:11@sha256:b1a711069b801a325a30885f08f5067b2b102232379750dda4d25a016afd9a88",
 			},
@@ -135,7 +133,59 @@ func TestCreateDockerfilePinningRemediation(t *testing.T) {
 			t.Parallel()
 			got := CreateDockerfilePinningRemediation(&tt.dep, stubDigester{})
 			if !cmp.Equal(got, tt.expected) {
-				t.Errorf(cmp.Diff(got, tt.expected))
+				t.Error(cmp.Diff(got, tt.expected))
+			}
+		})
+	}
+}
+
+func TestCreateWorkflowPinningRemediation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		expected *finding.Remediation
+		name     string
+		branch   string
+		repo     string
+		filepath string
+	}{
+		{
+			name:     "valid input",
+			branch:   "main",
+			repo:     "ossf/scorecard",
+			filepath: ".github/workflows/scorecard.yml",
+			expected: &finding.Remediation{
+				Text:     fmt.Sprintf(workflowText, "ossf/scorecard", "scorecard.yml", "main", "pin"),
+				Markdown: fmt.Sprintf(workflowMarkdown, "ossf/scorecard", "scorecard.yml", "main", "pin"),
+			},
+		},
+		{
+			name:     "empty branch",
+			branch:   "",
+			repo:     "ossf/scorecard",
+			filepath: ".github/workflows/<workflow-file>",
+			expected: nil,
+		},
+		{
+			name:     "empty repo",
+			branch:   "main",
+			repo:     "",
+			filepath: ".github/workflows/<workflow-file>",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := RemediationMetadata{
+				Branch: tt.branch,
+				Repo:   tt.repo,
+			}
+			got := r.CreateWorkflowPinningRemediation(tt.filepath)
+			if !cmp.Equal(got, tt.expected) {
+				t.Error(cmp.Diff(got, tt.expected))
 			}
 		})
 	}

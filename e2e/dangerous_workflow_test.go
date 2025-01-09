@@ -21,12 +21,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks"
-	"github.com/ossf/scorecard/v4/clients"
-	"github.com/ossf/scorecard/v4/clients/githubrepo"
-	"github.com/ossf/scorecard/v4/clients/localdir"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks"
+	"github.com/ossf/scorecard/v5/clients"
+	"github.com/ossf/scorecard/v5/clients/githubrepo"
+	"github.com/ossf/scorecard/v5/clients/localdir"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 var _ = Describe("E2E TEST:"+checks.CheckTokenPermissions, func() {
@@ -53,7 +53,7 @@ var _ = Describe("E2E TEST:"+checks.CheckTokenPermissions, func() {
 			}
 			result := checks.DangerousWorkflow(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "dangerous workflow", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "dangerous workflow", &expected, &result, &dl)
 		})
 		It("Should return dangerous workflow at commit", func() {
 			dl := scut.TestDetailLogger{}
@@ -77,7 +77,7 @@ var _ = Describe("E2E TEST:"+checks.CheckTokenPermissions, func() {
 			}
 			result := checks.DangerousWorkflow(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "dangerous workflow", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "dangerous workflow", &expected, &result, &dl)
 		})
 		It("Should return dangerous workflow for local repoClient", func() {
 			dl := scut.TestDetailLogger{}
@@ -113,7 +113,7 @@ var _ = Describe("E2E TEST:"+checks.CheckTokenPermissions, func() {
 			}
 			result := checks.DangerousWorkflow(&req)
 			// New version.
-			Expect(scut.ValidateTestReturn(nil, "dangerous workflow", &expected, &result, &dl)).Should(BeTrue())
+			scut.ValidateTestReturn(GinkgoTB(), "dangerous workflow", &expected, &result, &dl)
 		})
 	})
 })

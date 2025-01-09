@@ -15,16 +15,18 @@
 package checks
 
 import (
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/evaluation"
-	"github.com/ossf/scorecard/v4/checks/raw"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/evaluation"
+	"github.com/ossf/scorecard/v5/checks/raw"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/probes"
+	"github.com/ossf/scorecard/v5/probes/zrunner"
 )
 
-// CheckDependencyUpdateTool is the exported name for Automatic-Depdendency-Update.
+// CheckDependencyUpdateTool is the exported name for Dependency-Update-Tool.
 const CheckDependencyUpdateTool = "Dependency-Update-Tool"
 
-//nolint
+//nolint:gochecknoinits
 func init() {
 	supportedRequestTypes := []checker.RequestType{
 		checker.FileBased,
@@ -43,11 +45,19 @@ func DependencyUpdateTool(c *checker.CheckRequest) checker.CheckResult {
 		return checker.CreateRuntimeErrorResult(CheckDependencyUpdateTool, e)
 	}
 
-	// Return raw results.
-	if c.RawResults != nil {
-		c.RawResults.DependencyUpdateToolResults = rawData
+	// Set the raw results.
+	pRawResults := getRawResults(c)
+	pRawResults.DependencyUpdateToolResults = rawData
+
+	// Evaluate the probes.
+	findings, err := zrunner.Run(pRawResults, probes.DependencyToolUpdates)
+	if err != nil {
+		e := sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		return checker.CreateRuntimeErrorResult(CheckDependencyUpdateTool, e)
 	}
 
 	// Return the score evaluation.
-	return evaluation.DependencyUpdateTool(CheckDependencyUpdateTool, c.Dlogger, &rawData)
+	ret := evaluation.DependencyUpdateTool(CheckDependencyUpdateTool, findings, c.Dlogger)
+	ret.Findings = findings
+	return ret
 }

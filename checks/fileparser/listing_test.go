@@ -16,11 +16,13 @@ package fileparser
 
 import (
 	"errors"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
 )
 
 var (
@@ -135,7 +137,7 @@ func TestIsTemplateFile(t *testing.T) {
 // TestCheckFileContainsCommands tests if the content starts with a comment.
 func TestCheckFileContainsCommands(t *testing.T) {
 	t.Parallel()
-	//nolint
+	//nolint:govet
 	type args struct {
 		content []byte
 		comment string
@@ -202,7 +204,7 @@ func Test_isMatchingPath(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "dockerfile",
@@ -211,7 +213,7 @@ func Test_isMatchingPath(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "dockerfile",
@@ -220,7 +222,7 @@ func Test_isMatchingPath(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -229,7 +231,7 @@ func Test_isMatchingPath(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -238,7 +240,7 @@ func Test_isMatchingPath(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -247,7 +249,7 @@ func Test_isMatchingPath(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -255,7 +257,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -263,7 +265,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -271,7 +273,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -279,7 +281,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -287,7 +289,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -295,7 +297,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -303,7 +305,7 @@ func Test_isMatchingPath(t *testing.T) {
 			},
 		},
 		{
-			name: "matching path with case insensitive",
+			name: "matching path with case-insensitive",
 			args: args{
 				pattern:       "Dockerfile",
 				fullpath:      "Dockerfile.template",
@@ -397,7 +399,7 @@ func Test_isTestdataFile(t *testing.T) {
 // TestOnMatchingFileContentDo tests the OnMatchingFileContent function.
 func TestOnMatchingFileContent(t *testing.T) {
 	t.Parallel()
-	//nolint
+	//nolint:govet
 	tests := []struct {
 		name                   string
 		wantErr                bool
@@ -515,7 +517,6 @@ func TestOnMatchingFileContent(t *testing.T) {
 			t.Parallel()
 			x := func(path string, content []byte, args ...interface{}) (bool, error) {
 				if tt.shouldFuncFail {
-					//nolint
 					return false, errors.New("test error")
 				}
 				if tt.shouldGetPredicateFail {
@@ -527,7 +528,7 @@ func TestOnMatchingFileContent(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockRepo := mockrepo.NewMockRepoClient(ctrl)
 			mockRepo.EXPECT().ListFiles(gomock.Any()).Return(tt.files, nil).AnyTimes()
-			mockRepo.EXPECT().GetFileContent(gomock.Any()).Return(nil, nil).AnyTimes()
+			mockRepo.EXPECT().GetFileReader(gomock.Any()).Return(io.NopCloser(strings.NewReader("")), nil).AnyTimes()
 
 			result := OnMatchingFileContentDo(mockRepo, PathMatcher{
 				Pattern:       tt.shellPattern,
@@ -542,8 +543,6 @@ func TestOnMatchingFileContent(t *testing.T) {
 }
 
 // TestOnAllFilesDo tests the OnAllFilesDo function.
-//
-//nolint:gocognit
 func TestOnAllFilesDo(t *testing.T) {
 	t.Parallel()
 
@@ -584,7 +583,7 @@ func TestOnAllFilesDo(t *testing.T) {
 	alwaysFail := func(path string, args ...interface{}) (bool, error) {
 		return false, errTest
 	}
-	//nolint
+	//nolint:govet
 	tests := []struct {
 		name         string
 		onFile       DoWhileTrueOnFilename

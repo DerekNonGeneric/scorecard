@@ -19,20 +19,20 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type releasesHandler struct {
 	glClient *gitlab.Client
 	once     *sync.Once
 	errSetup error
-	repourl  *repoURL
+	repourl  *Repo
 	releases []clients.Release
 }
 
-func (handler *releasesHandler) init(repourl *repoURL) {
+func (handler *releasesHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 	handler.errSetup = nil
 	handler.once = new(sync.Once)
@@ -44,7 +44,7 @@ func (handler *releasesHandler) setup() error {
 			handler.errSetup = fmt.Errorf("%w: ListReleases only supported for HEAD queries", clients.ErrUnsupportedFeature)
 			return
 		}
-		releases, _, err := handler.glClient.Releases.ListReleases(handler.repourl.project, &gitlab.ListReleasesOptions{})
+		releases, _, err := handler.glClient.Releases.ListReleases(handler.repourl.projectID, &gitlab.ListReleasesOptions{})
 		if err != nil {
 			handler.errSetup = fmt.Errorf("%w: ListReleases failed", err)
 			return

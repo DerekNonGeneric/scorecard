@@ -16,45 +16,42 @@ package evaluation
 
 import (
 	"fmt"
-	"strings"
 
-	"github.com/google/osv-scanner/pkg/grouper"
-
-	"github.com/ossf/scorecard/v4/checker"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/hasOSVVulnerabilities"
 )
 
 // Vulnerabilities applies the score policy for the Vulnerabilities check.
-func Vulnerabilities(name string, dl checker.DetailLogger,
-	r *checker.VulnerabilitiesData,
+func Vulnerabilities(name string,
+	findings []finding.Finding,
+	dl checker.DetailLogger,
 ) checker.CheckResult {
-	if r == nil {
-		e := sce.WithMessage(sce.ErrScorecardInternal, "empty raw data")
+	expectedProbes := []string{
+		hasOSVVulnerabilities.Probe,
+	}
+
+	if !finding.UniqueProbesEqual(findings, expectedProbes) {
+		e := sce.WithMessage(sce.ErrScorecardInternal, "invalid probe results")
 		return checker.CreateRuntimeErrorResult(name, e)
 	}
 
-	aliasVulnerabilities := []grouper.IDAliases{}
-	for _, vuln := range r.Vulnerabilities {
-		aliasVulnerabilities = append(aliasVulnerabilities, grouper.IDAliases(vuln))
+	var numVulnsFound int
+	for i := range findings {
+		f := &findings[i]
+		if f.Outcome == finding.OutcomeTrue {
+			numVulnsFound++
+			checker.LogFinding(dl, f, checker.DetailWarn)
+		}
 	}
 
-	IDs := grouper.Group(aliasVulnerabilities)
-	score := checker.MaxResultScore - len(IDs)
+	score := checker.MaxResultScore - numVulnsFound
 
 	if score < checker.MinResultScore {
 		score = checker.MinResultScore
 	}
 
-	if len(IDs) > 0 {
-		for _, v := range IDs {
-			dl.Warn(&checker.LogMessage{
-				Text: fmt.Sprintf("Project is vulnerable to: %s", strings.Join(v.IDs, " / ")),
-			})
-		}
-
-		return checker.CreateResultWithScore(name,
-			fmt.Sprintf("%v existing vulnerabilities detected", len(IDs)), score)
-	}
-
-	return checker.CreateMaxScoreResult(name, "no vulnerabilities detected")
+	return checker.CreateResultWithScore(name,
+		fmt.Sprintf("%v existing vulnerabilities detected", numVulnsFound), score)
 }

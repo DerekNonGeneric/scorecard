@@ -15,6 +15,8 @@
 package e2e
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -22,13 +24,16 @@ import (
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v2"
 
-	"github.com/ossf/scorecard/v4/attestor/command"
-	"github.com/ossf/scorecard/v4/attestor/policy"
+	"github.com/ossf/scorecard/v5/attestor/command"
+	"github.com/ossf/scorecard/v5/attestor/policy"
+	"github.com/ossf/scorecard/v5/clients/githubrepo"
+	"github.com/ossf/scorecard/v5/internal/checknames"
+	"github.com/ossf/scorecard/v5/pkg/scorecard"
 )
 
 var _ = Describe("E2E TEST PAT: scorecard-attestor policy", func() {
 	Context("E2E TEST:Validating scorecard attestation policy", func() {
-		It("Should attest to repos based on policy", func() {
+		It("Should attest to known good repos based on policy", func() {
 			tt := []struct {
 				name     string
 				repoURL  string
@@ -45,141 +50,6 @@ var _ = Describe("E2E TEST PAT: scorecard-attestor policy", func() {
 						PreventUnpinnedDependencies: true,
 					},
 					expected: policy.Pass,
-				},
-				{
-					name:    "test bad repo with vulnerabilities prevented but no known vulnerabilities",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventKnownVulnerabilities: true,
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test bad repo with ignored binary artifact",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						AllowedBinaryArtifacts:      []string{"test-binary-artifact-*"},
-						PreventKnownVulnerabilities: true,
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test bad repo with ignored binary artifact",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						PreventKnownVulnerabilities: true,
-					},
-					expected: policy.Fail,
-				},
-				{
-					name:    "test bad repo with ignored dep by path",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventUnpinnedDependencies: true,
-						AllowedUnpinnedDependencies: []policy.Dependency{{Filepath: "Dockerfile"}},
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test bad repo without ignored dep",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventUnpinnedDependencies: true,
-					},
-					expected: policy.Fail,
-				},
-				{
-					name:    "test bad repo with ignored dep by name",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventUnpinnedDependencies: true,
-						AllowedUnpinnedDependencies: []policy.Dependency{{PackageName: "static-debian11"}, {PackageName: "golang"}},
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test bad repo with everything ignored",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						AllowedBinaryArtifacts:      []string{"test-binary-artifact-*"},
-						PreventKnownVulnerabilities: true,
-						PreventUnpinnedDependencies: true,
-						AllowedUnpinnedDependencies: []policy.Dependency{{Filepath: "Dockerfile"}},
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test repo with simple code review requirements",
-					repoURL: "https://github.com/ossf/scorecard",
-					commit:  "fa0592fab28aa92560f04e1ae8649dfff566ae2b",
-					policy: policy.AttestationPolicy{
-						EnsureCodeReviewed: true,
-						CodeReviewRequirements: policy.CodeReviewRequirements{
-							MinReviewers: 1,
-						},
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test code reviews required but repo doesn't have code reviews",
-					repoURL: "https://github.com/ossf-tests/scorecard-binauthz-test-bad",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						PreventKnownVulnerabilities: true,
-						PreventUnpinnedDependencies: true,
-						EnsureCodeReviewed:          true,
-					},
-					expected: policy.Fail,
-				},
-				{
-					name:    "test code reviews required with min reviewers",
-					repoURL: "https://github.com/ossf/scorecard",
-					commit:  "fa0592fab28aa92560f04e1ae8649dfff566ae2b",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						PreventKnownVulnerabilities: false,
-						PreventUnpinnedDependencies: true,
-						EnsureCodeReviewed:          true,
-						CodeReviewRequirements: policy.CodeReviewRequirements{
-							MinReviewers: 1,
-						},
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test code reviews required with min reviewers and required reviewers",
-					repoURL: "https://github.com/ossf/scorecard",
-					commit:  "fa0592fab28aa92560f04e1ae8649dfff566ae2b",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						PreventKnownVulnerabilities: false,
-						PreventUnpinnedDependencies: true,
-						EnsureCodeReviewed:          true,
-						CodeReviewRequirements: policy.CodeReviewRequirements{
-							MinReviewers:      1,
-							RequiredApprovers: []string{"spencerschrock", "laurentsimon", "naveensrinivasan", "azeemshaikh38"},
-						},
-					},
-					expected: policy.Pass,
-				},
-				{
-					name:    "test code reviews required with too many min reviewers but matching required reviewers",
-					repoURL: "https://github.com/ossf/scorecard",
-					commit:  "fa0592fab28aa92560f04e1ae8649dfff566ae2b",
-					policy: policy.AttestationPolicy{
-						PreventBinaryArtifacts:      true,
-						PreventKnownVulnerabilities: false,
-						PreventUnpinnedDependencies: true,
-						EnsureCodeReviewed:          true,
-						CodeReviewRequirements: policy.CodeReviewRequirements{
-							MinReviewers:      2,
-							RequiredApprovers: []string{"spencerschrock", "laurentsimon", "naveensrinivasan", "azeemshaikh38"},
-						},
-					},
-					expected: policy.Fail,
 				},
 			}
 
@@ -202,3 +72,167 @@ var _ = Describe("E2E TEST PAT: scorecard-attestor policy", func() {
 		})
 	})
 })
+
+var _ = Describe("E2E TEST PAT: scorecard-attestor policy", func() {
+	Context("E2E TEST:Validating scorecard attestation policy", func() {
+		It("Should attest to bad repos based on policy", func() {
+			tt := []struct {
+				name     string
+				repoURL  string
+				commit   string
+				policy   policy.AttestationPolicy
+				expected policy.PolicyResult
+			}{
+				{
+					name: "test bad repo with vulnerabilities prevented but no known vulnerabilities",
+					policy: policy.AttestationPolicy{
+						PreventKnownVulnerabilities: true,
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test bad repo with ignored binary artifact",
+					policy: policy.AttestationPolicy{
+						PreventBinaryArtifacts: true,
+						AllowedBinaryArtifacts: []string{"test-binary-artifact-*"},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test bad repo with binary artifact",
+					policy: policy.AttestationPolicy{
+						PreventBinaryArtifacts: true,
+					},
+					expected: policy.Fail,
+				},
+				{
+					name: "test bad repo with ignored dep by path",
+					policy: policy.AttestationPolicy{
+						PreventUnpinnedDependencies: true,
+						AllowedUnpinnedDependencies: []policy.Dependency{{Filepath: "Dockerfile"}},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test bad repo without ignored dep",
+					policy: policy.AttestationPolicy{
+						PreventUnpinnedDependencies: true,
+					},
+					expected: policy.Fail,
+				},
+				{
+					name: "test bad repo with ignored dep by name",
+					policy: policy.AttestationPolicy{
+						PreventUnpinnedDependencies: true,
+						AllowedUnpinnedDependencies: []policy.Dependency{{PackageName: "static-debian11"}, {PackageName: "golang"}},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test bad repo with everything ignored",
+					policy: policy.AttestationPolicy{
+						PreventBinaryArtifacts:      true,
+						AllowedBinaryArtifacts:      []string{"test-binary-artifact-*"},
+						PreventKnownVulnerabilities: true,
+						PreventUnpinnedDependencies: true,
+						AllowedUnpinnedDependencies: []policy.Dependency{{Filepath: "Dockerfile"}},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test code reviews required but repo doesn't have code reviews",
+					policy: policy.AttestationPolicy{
+						EnsureCodeReviewed: true,
+					},
+					expected: policy.Fail,
+				},
+			}
+			results, err := getScorecardResult("https://github.com/ossf-tests/scorecard-binauthz-test-bad")
+			Expect(err).Should(BeNil())
+			for _, tc := range tt {
+				got, err := tc.policy.EvaluateResults(&results.RawResults)
+				Expect(err).Should(BeNil())
+				Expect(got).Should(BeEquivalentTo(tc.expected))
+			}
+		})
+	})
+})
+
+var _ = Describe("E2E TEST PAT: scorecard-attestor policy", func() {
+	Context("E2E TEST:Validating scorecard attestation policy", func() {
+		It("Should attest to repos based on code review policy", func() {
+			tt := []struct {
+				name     string
+				repoURL  string
+				commit   string
+				policy   policy.AttestationPolicy
+				expected policy.PolicyResult
+			}{
+				{
+					name: "test repo with simple code review requirements",
+					policy: policy.AttestationPolicy{
+						EnsureCodeReviewed: true,
+						CodeReviewRequirements: policy.CodeReviewRequirements{
+							MinReviewers: 1,
+						},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test code reviews required with min reviewers",
+					policy: policy.AttestationPolicy{
+						EnsureCodeReviewed: true,
+						CodeReviewRequirements: policy.CodeReviewRequirements{
+							MinReviewers: 1,
+						},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test code reviews required with min reviewers and required reviewers",
+					policy: policy.AttestationPolicy{
+						EnsureCodeReviewed: true,
+						CodeReviewRequirements: policy.CodeReviewRequirements{
+							MinReviewers:      1,
+							RequiredApprovers: []string{"spencerschrock", "laurentsimon", "naveensrinivasan", "azeemshaikh38", "raghavkaul"},
+						},
+					},
+					expected: policy.Pass,
+				},
+				{
+					name: "test code reviews required with too many min reviewers but matching required reviewers",
+					policy: policy.AttestationPolicy{
+						EnsureCodeReviewed: true,
+						CodeReviewRequirements: policy.CodeReviewRequirements{
+							MinReviewers:      2,
+							RequiredApprovers: []string{"spencerschrock", "laurentsimon", "naveensrinivasan", "azeemshaikh38", "raghavkaul"},
+						},
+					},
+					expected: policy.Fail,
+				},
+			}
+			results, err := getScorecardResult("https://github.com/ossf-tests/scorecard-attestor-code-review-e2e")
+			Expect(err).Should(BeNil())
+			for _, tc := range tt {
+				got, err := tc.policy.EvaluateResults(&results.RawResults)
+				Expect(err).Should(BeNil())
+				Expect(got).Should(BeEquivalentTo(tc.expected))
+			}
+		})
+	})
+})
+
+func getScorecardResult(repoURL string) (scorecard.Result, error) {
+	ctx := context.Background()
+	enabledChecks := []string{
+		checknames.BinaryArtifacts,
+		checknames.Vulnerabilities,
+		checknames.CodeReview,
+		checknames.PinnedDependencies,
+	}
+	repo, err := githubrepo.MakeGithubRepo(repoURL)
+	if err != nil {
+		return scorecard.Result{}, fmt.Errorf("couldn't set up repo: %w", err)
+	}
+	return scorecard.Run(ctx, repo, scorecard.WithChecks(enabledChecks))
+}

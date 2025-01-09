@@ -17,20 +17,21 @@ package githubrepo
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/clients"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
-type repoURL struct {
+type Repo struct {
 	host, owner, repo, defaultBranch, commitSHA string
 	metadata                                    []string
 }
 
 // Parses input string into repoURL struct.
 // Accepts "owner/repo" or "github.com/owner/repo".
-func (r *repoURL) parse(input string) error {
+func (r *Repo) parse(input string) error {
 	var t string
 
 	const two = 2
@@ -42,7 +43,11 @@ func (r *repoURL) parse(input string) error {
 	// This will takes care for repo/owner format.
 	// By default it will use github.com
 	case l == two:
-		t = "github.com/" + c[0] + "/" + c[1]
+		githubHost, isGhHost := os.LookupEnv("GH_HOST")
+		if !isGhHost {
+			githubHost = "github.com"
+		}
+		t = githubHost + "/" + c[0] + "/" + c[1]
 	case l >= three:
 		t = input
 	}
@@ -60,7 +65,7 @@ func (r *repoURL) parse(input string) error {
 	const splitLen = 2
 	split := strings.SplitN(strings.Trim(u.Path, "/"), "/", splitLen)
 	if len(split) != splitLen {
-		return sce.WithMessage(sce.ErrorInvalidURL, fmt.Sprintf("%v. Expected full repository url", input))
+		return sce.WithMessage(sce.ErrInvalidURL, fmt.Sprintf("%v. Expected full repository url", input))
 	}
 
 	r.host, r.owner, r.repo = u.Host, split[0], split[1]
@@ -68,44 +73,46 @@ func (r *repoURL) parse(input string) error {
 }
 
 // URI implements Repo.URI().
-func (r *repoURL) URI() string {
+func (r *Repo) URI() string {
 	return fmt.Sprintf("%s/%s/%s", r.host, r.owner, r.repo)
 }
 
-func (r *repoURL) Host() string {
+func (r *Repo) Host() string {
 	return r.host
 }
 
 // String implements Repo.String.
-func (r *repoURL) String() string {
+func (r *Repo) String() string {
 	return fmt.Sprintf("%s-%s-%s", r.host, r.owner, r.repo)
 }
 
 // IsValid implements Repo.IsValid.
-func (r *repoURL) IsValid() error {
+func (r *Repo) IsValid() error {
+	githubHost := os.Getenv("GH_HOST")
 	switch r.host {
 	case "github.com":
+	case githubHost:
 	default:
-		return sce.WithMessage(sce.ErrorUnsupportedHost, r.host)
+		return sce.WithMessage(sce.ErrUnsupportedHost, r.host)
 	}
 
 	if strings.TrimSpace(r.owner) == "" || strings.TrimSpace(r.repo) == "" {
-		return sce.WithMessage(sce.ErrorInvalidURL,
+		return sce.WithMessage(sce.ErrInvalidURL,
 			fmt.Sprintf("%v. Expected the full repository url", r.URI()))
 	}
 	return nil
 }
 
-func (r *repoURL) AppendMetadata(metadata ...string) {
+func (r *Repo) AppendMetadata(metadata ...string) {
 	r.metadata = append(r.metadata, metadata...)
 }
 
 // Metadata implements Repo.Metadata.
-func (r *repoURL) Metadata() []string {
+func (r *Repo) Metadata() []string {
 	return r.metadata
 }
 
-func (r *repoURL) commitExpression() string {
+func (r *Repo) commitExpression() string {
 	if strings.EqualFold(r.commitSHA, clients.HeadSHA) {
 		// TODO(#575): Confirm that this works as expected.
 		return fmt.Sprintf("heads/%s", r.defaultBranch)
@@ -116,7 +123,7 @@ func (r *repoURL) commitExpression() string {
 // MakeGithubRepo takes input of form "owner/repo" or "github.com/owner/repo"
 // and returns an implementation of clients.Repo interface.
 func MakeGithubRepo(input string) (clients.Repo, error) {
-	var repo repoURL
+	var repo Repo
 	if err := repo.parse(input); err != nil {
 		return nil, fmt.Errorf("error during parse: %w", err)
 	}
@@ -124,4 +131,9 @@ func MakeGithubRepo(input string) (clients.Repo, error) {
 		return nil, fmt.Errorf("error in IsValid: %w", err)
 	}
 	return &repo, nil
+}
+
+// Path() implements RepoClient.Path.
+func (r *Repo) Path() string {
+	return fmt.Sprintf("%s/%s", r.owner, r.repo)
 }

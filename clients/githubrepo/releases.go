@@ -20,10 +20,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/clients"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
 type releasesHandler struct {
@@ -31,11 +31,11 @@ type releasesHandler struct {
 	once     *sync.Once
 	ctx      context.Context
 	errSetup error
-	repourl  *repoURL
+	repourl  *Repo
 	releases []clients.Release
 }
 
-func (handler *releasesHandler) init(ctx context.Context, repourl *repoURL) {
+func (handler *releasesHandler) init(ctx context.Context, repourl *Repo) {
 	handler.ctx = ctx
 	handler.repourl = repourl
 	handler.errSetup = nil
@@ -77,7 +77,7 @@ func releasesFrom(data []*github.RepositoryRelease) []clients.Release {
 		for _, a := range r.Assets {
 			release.Assets = append(release.Assets, clients.ReleaseAsset{
 				Name: a.GetName(),
-				URL:  a.GetURL(),
+				URL:  r.GetHTMLURL(),
 			})
 		}
 		releases = append(releases, release)

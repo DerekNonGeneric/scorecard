@@ -20,12 +20,13 @@
 package mockrepo
 
 import (
-	"context"
+	context "context"
+	io "io"
 	reflect "reflect"
 	time "time"
 
 	gomock "github.com/golang/mock/gomock"
-	clients "github.com/ossf/scorecard/v4/clients"
+	clients "github.com/ossf/scorecard/v5/clients"
 )
 
 // MockRepoClient is a mock of RepoClient interface.
@@ -125,28 +126,34 @@ func (mr *MockRepoClientMockRecorder) GetDefaultBranchName() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultBranchName", reflect.TypeOf((*MockRepoClient)(nil).GetDefaultBranchName))
 }
 
-// GetFileContent mocks base method.
-func (m *MockRepoClient) GetFileContent(filename string) ([]byte, error) {
+// GetFileReader mocks base method.
+func (m *MockRepoClient) GetFileReader(filename string) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetFileContent", filename)
-	ret0, _ := ret[0].([]byte)
+	ret := m.ctrl.Call(m, "GetFileReader", filename)
+	ret0, _ := ret[0].(io.ReadCloser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetFileContent indicates an expected call of GetFileContent.
-func (mr *MockRepoClientMockRecorder) GetFileContent(filename interface{}) *gomock.Call {
+// GetFileReader indicates an expected call of GetFileReader.
+func (mr *MockRepoClientMockRecorder) GetFileReader(filename interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileContent", reflect.TypeOf((*MockRepoClient)(nil).GetFileContent), filename)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileReader", reflect.TypeOf((*MockRepoClient)(nil).GetFileReader), filename)
 }
 
 // GetOrgRepoClient mocks base method.
-func (m *MockRepoClient) GetOrgRepoClient(ctx context.Context) (clients.RepoClient, error) {
+func (m *MockRepoClient) GetOrgRepoClient(arg0 context.Context) (clients.RepoClient, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetOrgRepoClient")
+	ret := m.ctrl.Call(m, "GetOrgRepoClient", arg0)
 	ret0, _ := ret[0].(clients.RepoClient)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
+}
+
+// GetOrgRepoClient indicates an expected call of GetOrgRepoClient.
+func (mr *MockRepoClientMockRecorder) GetOrgRepoClient(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOrgRepoClient", reflect.TypeOf((*MockRepoClient)(nil).GetOrgRepoClient), arg0)
 }
 
 // InitRepo mocks base method.

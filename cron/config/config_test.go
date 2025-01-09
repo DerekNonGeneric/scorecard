@@ -34,7 +34,7 @@ const (
 	prodCompletionThreshold            = 0.99
 	prodWebhookURL                     = ""
 	prodCIIDataBucket                  = "gs://ossf-scorecard-cii-data"
-	prodBlacklistedChecks              = "CI-Tests,Contributors,Dependency-Update-Tool,SAST,Vulnerabilities"
+	prodBlacklistedChecks              = "CI-Tests,Contributors,Dependency-Update-Tool,Webhooks"
 	prodShardSize               int    = 10
 	prodMetricExporter          string = "stackdriver"
 	prodMetricStackdriverPrefix string = "scorecard-cron"
@@ -70,7 +70,6 @@ func getByteValueFromFile(filename string) ([]byte, error) {
 	if filename == "" {
 		return nil, nil
 	}
-	//nolint
 	return os.ReadFile(filename)
 }
 
@@ -195,7 +194,7 @@ func TestGetStringConfigValue(t *testing.T) {
 			envVal:      "",
 			setEnv:      true,
 			hasError:    true,
-			expectedErr: ErrorEmptyConfigValue,
+			expectedErr: ErrEmptyConfigValue,
 		},
 	}
 	for _, testcase := range testcases {
@@ -344,7 +343,7 @@ func TestGetBigQueryDataset(t *testing.T) {
 		os.Unsetenv(bigqueryDataset)
 		dataset, err := GetBigQueryDataset()
 		if err != nil {
-			t.Errorf("failed to get production BQ datset from config: %v", err)
+			t.Errorf("failed to get production BQ dataset from config: %v", err)
 		}
 		if dataset != prodBigQueryDataset {
 			t.Errorf("test failed: expected - %s, got = %s", prodBigQueryDataset, dataset)
@@ -511,7 +510,7 @@ func TestGetAdditionalParams(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "nonexistant value",
+			name:    "nonexistent value",
 			mapName: "this-value-should-never-exist",
 			want:    map[string]string{},
 			wantErr: true,

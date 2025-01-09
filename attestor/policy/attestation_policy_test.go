@@ -17,18 +17,18 @@ package policy
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
-	sclog "github.com/ossf/scorecard/v4/log"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	sce "github.com/ossf/scorecard/v5/errors"
+	sclog "github.com/ossf/scorecard/v5/log"
 )
 
 func (ap *AttestationPolicy) ToJSON() string {
+	//nolint:musttag
 	jsonbytes, err := json.Marshal(ap)
 	if err != nil {
 		return ""
@@ -171,7 +171,7 @@ func TestCheckPreventBinaryArtifacts(t *testing.T) {
 func TestCheckCodeReviewed(t *testing.T) {
 	t.Parallel()
 
-	// nolint
+	//nolint:govet
 	tests := []struct {
 		err      error
 		raw      *checker.RawResults
@@ -386,7 +386,7 @@ func asPointer(s string) *string {
 func TestNoUnpinnedDependencies(t *testing.T) {
 	t.Parallel()
 
-	// nolint
+	//nolint:govet
 	tests := []struct {
 		err      error
 		raw      *checker.RawResults
@@ -533,8 +533,8 @@ func TestAttestationPolicyRead(t *testing.T) {
 			// Compare outputs only if the error is nil.
 			// TODO: compare objects.
 			if p.ToJSON() != tt.result.ToJSON() {
-				fmt.Printf("p.ToJSON(): %v\n", p.ToJSON())
-				fmt.Printf("tt.result.ToJSON(): %v\n", tt.result.ToJSON())
+				t.Logf("p.ToJSON(): %v\n", p.ToJSON())
+				t.Logf("tt.result.ToJSON(): %v\n", tt.result.ToJSON())
 				t.Fatalf("%s: invalid result", tt.name)
 			}
 		})

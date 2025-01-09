@@ -24,8 +24,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ossf/scorecard/v4/cron/config"
-	"github.com/ossf/scorecard/v4/cron/data"
+	"github.com/ossf/scorecard/v5/cron/config"
+	"github.com/ossf/scorecard/v5/cron/data"
 )
 
 func transferDataToBq(ctx context.Context,
@@ -50,7 +50,7 @@ func transferDataToBq(ctx context.Context,
 		if webhookURL == "" {
 			continue
 		}
-		//nolint: noctx, gosec // variable URL is ok here.
+		//nolint:noctx,gosec // variable URL is ok here.
 		resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(shards.Metadata()))
 		if err != nil {
 			return fmt.Errorf("error during http.Post to %s: %w", webhookURL, err)

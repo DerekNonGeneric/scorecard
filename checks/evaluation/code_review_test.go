@@ -17,104 +17,55 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/codeApproved"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestCodeReview(t *testing.T) {
 	t.Parallel()
-
-	//nolint:govet // ignore since this is a test.
 	tests := []struct {
 		name     string
+		findings []finding.Finding
 		expected scut.TestReturn
-		rawData  *checker.CodeReviewData
 	}{
 		{
-			name: "NullRawData",
+			name: "no findings is an error",
 			expected: scut.TestReturn{
 				Error: sce.ErrScorecardInternal,
 				Score: checker.InconclusiveResultScore,
 			},
-			rawData: nil,
+			findings: nil,
 		},
 		{
-			name: "NoCommits",
+			name: "no changesets",
 			expected: scut.TestReturn{
 				Score: checker.InconclusiveResultScore,
 			},
-			rawData: &checker.CodeReviewData{},
-		},
-		{
-			name: "NoReviews",
-			expected: scut.TestReturn{
-				Score:         checker.MinResultScore,
-				NumberOfDebug: 1,
-			},
-			rawData: &checker.CodeReviewData{
-				DefaultBranchChangesets: []checker.Changeset{
-					{
-						Commits: []clients.Commit{{SHA: "a"}},
-					},
-					{
-						Commits: []clients.Commit{{SHA: "a"}},
-					},
+			findings: []finding.Finding{
+				{
+					Probe:   codeApproved.Probe,
+					Outcome: finding.OutcomeNotApplicable,
+					Message: "no changesets detected",
 				},
 			},
 		},
 		{
-			name: "Unreviewed human and bot changes",
+			name: "unreviewed changes result in minimum score",
 			expected: scut.TestReturn{
 				Score:         checker.MinResultScore,
-				NumberOfDebug: 1,
+				NumberOfDebug: 0, // TODO
 			},
-			rawData: &checker.CodeReviewData{
-				DefaultBranchChangesets: []checker.Changeset{
-					{
-						Commits: []clients.Commit{{SHA: "a", Committer: clients.User{IsBot: true}}},
-					},
-					{
-						Commits: []clients.Commit{{SHA: "b"}},
-					},
-				},
-			},
-		},
-		{
-			name: "all human changesets reviewed, missing review on bot changeset",
-			expected: scut.TestReturn{
-				Score:         7,
-				NumberOfDebug: 1,
-			},
-			rawData: &checker.CodeReviewData{
-				DefaultBranchChangesets: []checker.Changeset{
-					{
-						Author:         clients.User{Login: "alice"},
-						ReviewPlatform: checker.ReviewPlatformGitHub,
-						RevisionID:     "1",
-						Reviews: []clients.Review{
-							{
-								Author: &clients.User{},
-								State:  "APPROVED",
-							},
-						},
-						Commits: []clients.Commit{
-							{
-								Committer: clients.User{Login: "bob"},
-								SHA:       "b",
-							},
-						},
-					},
-					{
-						Author:     clients.User{Login: "alice-the-bot[bot]", IsBot: true},
-						RevisionID: "b",
-						Commits: []clients.Commit{
-							{
-								Committer: clients.User{Login: "alice-the-bot[bot]", IsBot: true},
-								SHA:       "b",
-							},
-						},
+			findings: []finding.Finding{
+				{
+					Probe:   codeApproved.Probe,
+					Outcome: finding.OutcomeFalse,
+					Message: "Found 0/2 approved changesets",
+					Values: map[string]string{
+						codeApproved.NumApprovedKey: "0",
+						codeApproved.NumTotalKey:    "2",
 					},
 				},
 			},
@@ -124,78 +75,14 @@ func TestCodeReview(t *testing.T) {
 			expected: scut.TestReturn{
 				Score: checker.MaxResultScore,
 			},
-			rawData: &checker.CodeReviewData{
-				DefaultBranchChangesets: []checker.Changeset{
-					{
-						Author:         clients.User{Login: "alice"},
-						ReviewPlatform: checker.ReviewPlatformGitHub,
-						RevisionID:     "1",
-						Reviews: []clients.Review{
-							{
-								Author: &clients.User{},
-								State:  "APPROVED",
-							},
-						},
-						Commits: []clients.Commit{
-							{
-								Committer: clients.User{Login: "bob"},
-								SHA:       "b",
-							},
-						},
-					},
-				},
-			},
-		},
-
-		{
-			name: "bot commits only",
-			expected: scut.TestReturn{
-				Score:         checker.InconclusiveResultScore,
-				NumberOfDebug: 1,
-			},
-			rawData: &checker.CodeReviewData{
-				DefaultBranchChangesets: []checker.Changeset{
-					{
-						Author:         clients.User{Login: "alice-the-bot[bot]", IsBot: true},
-						ReviewPlatform: checker.ReviewPlatformGitHub,
-						RevisionID:     "1",
-						Reviews: []clients.Review{
-							{
-								Author: &clients.User{},
-								State:  "APPROVED",
-							},
-						},
-						Commits: []clients.Commit{
-							{
-								Committer: clients.User{Login: "alice-the-bot[bot]", IsBot: true},
-								SHA:       "b",
-							},
-						},
-					},
-					{
-						RevisionID: "b",
-						Commits: []clients.Commit{
-							{
-								Committer: clients.User{Login: "alice-the-bot[bot]", IsBot: true},
-								SHA:       "b",
-							},
-						},
-					},
-				},
-			},
-		},
-
-		{
-			name: "all changesets reviewed outside github",
-			expected: scut.TestReturn{
-				Score: checker.MaxResultScore,
-			},
-			rawData: &checker.CodeReviewData{
-				DefaultBranchChangesets: []checker.Changeset{
-					{
-						ReviewPlatform: checker.ReviewPlatformGerrit,
-						RevisionID:     "1",
-						Commits:        []clients.Commit{{SHA: "a"}},
+			findings: []finding.Finding{
+				{
+					Probe:   codeApproved.Probe,
+					Outcome: finding.OutcomeTrue,
+					Message: "All changesets approved",
+					Values: map[string]string{
+						codeApproved.NumApprovedKey: "2",
+						codeApproved.NumTotalKey:    "2",
 					},
 				},
 			},
@@ -206,12 +93,9 @@ func TestCodeReview(t *testing.T) {
 		tt := tt // Re-initializing variable so it is not changed while executing the closure below
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			dl := &scut.TestDetailLogger{}
-			res := CodeReview(tt.name, dl, tt.rawData)
-			if !scut.ValidateTestReturn(t, tt.name, &tt.expected, &res, dl) {
-				t.Error()
-			}
+			res := CodeReview(tt.name, tt.findings, dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.expected, &res, dl)
 		})
 	}
 }

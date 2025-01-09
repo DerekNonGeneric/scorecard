@@ -15,10 +15,12 @@
 package checks
 
 import (
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/evaluation"
-	"github.com/ossf/scorecard/v4/checks/raw"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/evaluation"
+	"github.com/ossf/scorecard/v5/checks/raw"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/probes"
+	"github.com/ossf/scorecard/v5/probes/zrunner"
 )
 
 // CheckFuzzing is the registered name for Fuzzing.
@@ -26,7 +28,10 @@ const CheckFuzzing = "Fuzzing"
 
 //nolint:gochecknoinits
 func init() {
-	if err := registerCheck(CheckFuzzing, Fuzzing, nil); err != nil {
+	supportedRequestTypes := []checker.RequestType{
+		checker.FileBased,
+	}
+	if err := registerCheck(CheckFuzzing, Fuzzing, supportedRequestTypes); err != nil {
 		// this should never happen
 		panic(err)
 	}
@@ -41,9 +46,18 @@ func Fuzzing(c *checker.CheckRequest) checker.CheckResult {
 	}
 
 	// Set the raw results.
-	if c.RawResults != nil {
-		c.RawResults.FuzzingResults = rawData
+	pRawResults := getRawResults(c)
+	pRawResults.FuzzingResults = rawData
+
+	// Evaluate the probes.
+	findings, err := zrunner.Run(pRawResults, probes.Fuzzing)
+	if err != nil {
+		e := sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		return checker.CreateRuntimeErrorResult(CheckFuzzing, e)
 	}
 
-	return evaluation.Fuzzing(CheckFuzzing, c.Dlogger, &rawData)
+	// Return the score evaluation.
+	ret := evaluation.Fuzzing(CheckFuzzing, findings, c.Dlogger)
+	ret.Findings = findings
+	return ret
 }

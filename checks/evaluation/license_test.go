@@ -16,147 +16,96 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-
-	"github.com/ossf/scorecard/v4/checker"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
-
-func Test_scoreLicenseCriteria(t *testing.T) {
-	t.Parallel()
-	type args struct {
-		f  *checker.LicenseFile
-		dl checker.DetailLogger
-	}
-	tests := []struct { //nolint:govet
-		name string
-		args args
-		want int
-	}{
-		{
-			name: "License Attribution Type API",
-			args: args{
-				f: &checker.LicenseFile{
-					LicenseInformation: checker.License{
-						Attribution: checker.LicenseAttributionTypeAPI,
-						Approved:    true,
-					},
-				},
-				dl: &scut.TestDetailLogger{},
-			},
-			want: 10,
-		},
-		{
-			name: "License Attribution Type Heuristics",
-			args: args{
-				f: &checker.LicenseFile{
-					LicenseInformation: checker.License{
-						Attribution: checker.LicenseAttributionTypeHeuristics,
-					},
-				},
-				dl: &scut.TestDetailLogger{},
-			},
-			want: 9,
-		},
-		{
-			name: "License Attribution Type Other",
-			args: args{
-				f: &checker.LicenseFile{
-					LicenseInformation: checker.License{
-						Attribution: checker.LicenseAttributionTypeOther,
-					},
-				},
-				dl: &scut.TestDetailLogger{},
-			},
-			want: 6,
-		},
-		{
-			name: "License Attribution Type Unknown",
-			args: args{
-				f: &checker.LicenseFile{
-					LicenseInformation: checker.License{
-						Attribution: "Unknown",
-					},
-				},
-				dl: &scut.TestDetailLogger{},
-			},
-			want: 6,
-		},
-	}
-	for _, tt := range tests {
-		tt := tt // Parallel testing scoping hack.
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := scoreLicenseCriteria(tt.args.f, tt.args.dl); got != tt.want {
-				t.Errorf("scoreLicenseCriteria() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func TestLicense(t *testing.T) {
 	t.Parallel()
-	type args struct { //nolint:govet
-		name string
-		dl   checker.DetailLogger
-		r    *checker.LicenseData
-	}
 	tests := []struct {
-		name string
-		args args
-		want checker.CheckResult
+		name     string
+		findings []finding.Finding
+		result   scut.TestReturn
 	}{
 		{
-			name: "No License",
-			args: args{
-				name: "No License",
-				dl:   &scut.TestDetailLogger{},
-			},
-			want: checker.CheckResult{
-				Score:   -1,
-				Version: 2,
-				Reason:  "internal error: empty raw data",
-				Name:    "No License",
-			},
-		},
-		{
-			name: "No License Files",
-			args: args{
-				name: "No License Files",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.LicenseData{
-					LicenseFiles: []checker.LicenseFile{},
+			name: "True outcome = Max Score",
+			findings: []finding.Finding{
+				{
+					Probe:   "hasLicenseFile",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "hasFSFOrOSIApprovedLicense",
+					Outcome: finding.OutcomeTrue,
 				},
 			},
-			want: checker.CheckResult{
-				Score:   0,
-				Version: 2,
-				Reason:  "license file not detected",
-				Name:    "No License Files",
+			result: scut.TestReturn{
+				Score:        checker.MaxResultScore,
+				NumberOfInfo: 2,
 			},
-		},
-		{
-			name: "License Files Detected",
-			args: args{
-				name: "License Files Detected",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.LicenseData{
-					LicenseFiles: []checker.LicenseFile{
-						{
-							LicenseInformation: checker.License{
-								Attribution: checker.LicenseAttributionTypeAPI,
-								Approved:    true,
-							},
-						},
-					},
+		}, {
+			name: "false outcomes from all probes = Min score",
+			findings: []finding.Finding{
+				{
+					Probe:   "hasLicenseFile",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "hasFSFOrOSIApprovedLicense",
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
-				Score:   10,
-				Version: 2,
-				Reason:  "license file detected",
-				Name:    "License Files Detected",
+			result: scut.TestReturn{
+				Score:        checker.MinResultScore,
+				NumberOfWarn: 2,
+			},
+		}, {
+			name: "Has license file but not OSI/FSF approved",
+			findings: []finding.Finding{
+				{
+					Probe:   "hasLicenseFile",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "hasFSFOrOSIApprovedLicense",
+					Outcome: finding.OutcomeFalse,
+				},
+			},
+			result: scut.TestReturn{
+				Score:        9,
+				NumberOfWarn: 1,
+				NumberOfInfo: 1,
+			},
+		}, {
+			name: "Findings missing a probe = Error",
+			findings: []finding.Finding{
+				{
+					Probe:   "hasLicenseFile",
+					Outcome: finding.OutcomeTrue,
+				},
+			},
+			result: scut.TestReturn{
+				Score: -1,
+				Error: sce.ErrScorecardInternal,
+			},
+		}, {
+			name: "Has a license at top dir but it is not OSI/FSF approved",
+			findings: []finding.Finding{
+				{
+					Probe:   "hasLicenseFile",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "hasFSFOrOSIApprovedLicense",
+					Outcome: finding.OutcomeFalse,
+				},
+			},
+			result: scut.TestReturn{
+				Score:        9,
+				NumberOfInfo: 1,
+				NumberOfWarn: 1,
 			},
 		},
 	}
@@ -164,9 +113,9 @@ func TestLicense(t *testing.T) {
 		tt := tt // Parallel testing scoping hack.
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := License(tt.args.name, tt.args.dl, tt.args.r); !cmp.Equal(got, tt.want, cmpopts.IgnoreFields(checker.CheckResult{}, "Error")) { //nolint:lll
-				t.Errorf("License() = %v, want %v", got, cmp.Diff(got, tt.want, cmpopts.IgnoreFields(checker.CheckResult{}, "Error"))) //nolint:lll
-			}
+			dl := scut.TestDetailLogger{}
+			got := License(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
 	}
 }

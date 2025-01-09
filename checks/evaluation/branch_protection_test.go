@@ -17,409 +17,420 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/blocksDeleteOnBranches"
+	"github.com/ossf/scorecard/v5/probes/blocksForcePushOnBranches"
+	"github.com/ossf/scorecard/v5/probes/branchProtectionAppliesToAdmins"
+	"github.com/ossf/scorecard/v5/probes/branchesAreProtected"
+	"github.com/ossf/scorecard/v5/probes/dismissesStaleReviews"
+	"github.com/ossf/scorecard/v5/probes/requiresApproversForPullRequests"
+	"github.com/ossf/scorecard/v5/probes/requiresCodeOwnersReview"
+	"github.com/ossf/scorecard/v5/probes/requiresLastPushApproval"
+	"github.com/ossf/scorecard/v5/probes/requiresPRsToChangeCode"
+	"github.com/ossf/scorecard/v5/probes/requiresUpToDateBranches"
+	"github.com/ossf/scorecard/v5/probes/runsStatusChecksBeforeMerging"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
-func testScore(branch *clients.BranchRef, codeownersFiles []string, dl checker.DetailLogger) (int, error) {
-	var score levelScore
-	score.scores.basic, score.maxes.basic = basicNonAdminProtection(branch, dl)
-	score.scores.adminBasic, score.maxes.adminBasic = basicAdminProtection(branch, dl)
-	score.scores.review, score.maxes.review = nonAdminReviewProtection(branch)
-	score.scores.adminReview, score.maxes.adminReview = adminReviewProtection(branch, dl)
-	score.scores.context, score.maxes.context = nonAdminContextProtection(branch, dl)
-	score.scores.thoroughReview, score.maxes.thoroughReview = nonAdminThoroughReviewProtection(branch, dl)
-	score.scores.adminThoroughReview, score.maxes.adminThoroughReview = adminThoroughReviewProtection(branch, dl)
-	score.scores.codeownerReview, score.maxes.codeownerReview = codeownerBranchProtection(branch, codeownersFiles, dl)
+const emptyBranchName = ""
 
-	return computeScore([]levelScore{score})
-}
-
-func TestIsBranchProtected(t *testing.T) {
+func TestBranchProtection(t *testing.T) {
 	t.Parallel()
-	trueVal := true
-	falseVal := false
-	var zeroVal int32
-	var oneVal int32 = 1
-	branchVal := "branch-name"
 	tests := []struct {
-		name            string
-		branch          *clients.BranchRef
-		codeownersFiles []string
-		expected        scut.TestReturn
+		name     string
+		findings []finding.Finding
+		result   scut.TestReturn
 	}{
 		{
-			name: "Nothing is enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         2,
-				NumberOfWarn:  7,
-				NumberOfInfo:  2,
-				NumberOfDebug: 0,
+			name: "Branch name is an empty string which is not allowed and will error",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, emptyBranchName, finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, emptyBranchName, finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, emptyBranchName, finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, emptyBranchName, finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, emptyBranchName, finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, emptyBranchName, finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, emptyBranchName, finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, emptyBranchName, finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, emptyBranchName, finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, emptyBranchName, finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, emptyBranchName, finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					AllowDeletions:          &falseVal,
-					AllowForcePushes:        &falseVal,
-					RequireLinearHistory:    &falseVal,
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &trueVal,
-						Contexts:             nil,
-						UpToDateBeforeMerge:  &falseVal,
-					},
-				},
-			},
-		},
-		{
-			name: "Nothing is enabled and values are nil",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         0,
-				NumberOfWarn:  2,
-				NumberOfInfo:  0,
-				NumberOfDebug: 4,
-			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
+			result: scut.TestReturn{
+				Error: sce.ErrScorecardInternal,
+				Score: checker.InconclusiveResultScore,
 			},
 		},
 		{
 			name: "Required status check enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         2,
-				NumberOfWarn:  5,
-				NumberOfInfo:  4,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &trueVal,
-						UpToDateBeforeMerge:  &trueVal,
-						Contexts:             []string{"foo"},
-					},
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &falseVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-				},
+			result: scut.TestReturn{
+				Score:        4,
+				NumberOfInfo: 5,
+				NumberOfWarn: 5,
 			},
 		},
 		{
 			name: "Required status check enabled without checking for status string",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         2,
-				NumberOfWarn:  6,
-				NumberOfInfo:  3,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &falseVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &trueVal,
-						UpToDateBeforeMerge:  &trueVal,
-						Contexts:             nil,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        4,
+				NumberOfInfo: 4,
+				NumberOfWarn: 6,
 			},
 		},
 		{
-			name: "Required pull request enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         2,
-				NumberOfWarn:  6,
-				NumberOfInfo:  3,
-				NumberOfDebug: 0,
+			name: "Admin run only preventing force pushes and deletions",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeNotAvailable),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeNotAvailable),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeFalse),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &trueVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &trueVal,
-						UpToDateBeforeMerge:  &falseVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &oneVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:         3,
+				NumberOfWarn:  6,
+				NumberOfInfo:  2,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: "Admin run with all tier 2 requirements except require PRs and reviewers",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeTrue),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeNotAvailable),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeNotAvailable),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeFalse),
+			},
+			result: scut.TestReturn{
+				Score:         4,
+				NumberOfWarn:  2,
+				NumberOfInfo:  6,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: "Admin run on project requiring pull requests but without approver -- best a single maintainer can do",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeTrue),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeTrue),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
+			},
+			result: scut.TestReturn{
+				Score:        4,
+				NumberOfWarn: 1,
+				NumberOfInfo: 9,
+			},
+		},
+		{
+			name: "Admin run on project with all tier 2 requirements",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeTrue),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeTrue),
+					requiresApproversForPullRequests.RequiredReviewersKey, "1",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
+			},
+			result: scut.TestReturn{
+				Score:        6,
+				NumberOfWarn: 4,
+				NumberOfInfo: 6,
+			},
+		},
+		{
+			name: "Non-admin run on project that require zero reviewer (or don't require PRs at all, we can't differentiate it)",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeNotAvailable),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeNotAvailable),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeNotAvailable),
+			},
+			result: scut.TestReturn{
+				Score:         3,
+				NumberOfWarn:  2,
+				NumberOfInfo:  2,
+				NumberOfDebug: 5,
+			},
+		},
+		{
+			name: "Non-admin run on project that require 1 reviewer",
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeNotAvailable),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeTrue),
+					requiresApproversForPullRequests.RequiredReviewersKey, "1",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeNotAvailable),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
+			},
+			result: scut.TestReturn{
+				Score:         6,
+				NumberOfWarn:  3,
+				NumberOfInfo:  3,
+				NumberOfDebug: 4,
 			},
 		},
 		{
 			name: "Required admin enforcement enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         3,
-				NumberOfWarn:  5,
-				NumberOfInfo:  4,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeTrue),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &trueVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &trueVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &falseVal,
-						UpToDateBeforeMerge:  &falseVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        3,
+				NumberOfWarn: 5,
+				NumberOfInfo: 5,
 			},
 		},
 		{
 			name: "Required linear history enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         2,
-				NumberOfWarn:  6,
-				NumberOfInfo:  3,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &trueVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &falseVal,
-						UpToDateBeforeMerge:  &falseVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        3,
+				NumberOfWarn: 6,
+				NumberOfInfo: 4,
 			},
 		},
 		{
 			name: "Allow force push enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         1,
-				NumberOfWarn:  7,
-				NumberOfInfo:  2,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &falseVal,
-					AllowForcePushes:        &trueVal,
-					AllowDeletions:          &falseVal,
-
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &falseVal,
-						UpToDateBeforeMerge:  &falseVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        1,
+				NumberOfWarn: 7,
+				NumberOfInfo: 3,
 			},
 		},
 		{
 			name: "Allow deletions enabled",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         1,
-				NumberOfWarn:  7,
-				NumberOfInfo:  2,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeFalse),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeFalse),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeFalse),
+					requiresApproversForPullRequests.RequiredReviewersKey, "0",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeFalse),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeFalse),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &falseVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &falseVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &trueVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &falseVal,
-						UpToDateBeforeMerge:  &falseVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &falseVal,
-						RequireCodeOwnerReviews:      &falseVal,
-						RequiredApprovingReviewCount: &zeroVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        1,
+				NumberOfWarn: 7,
+				NumberOfInfo: 3,
 			},
 		},
 		{
 			name: "Branches are protected",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         8,
-				NumberOfWarn:  2,
-				NumberOfInfo:  8,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeTrue),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeTrue),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeTrue),
+					requiresApproversForPullRequests.RequiredReviewersKey, "1",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &trueVal,
-					RequireLinearHistory:    &trueVal,
-					RequireLastPushApproval: &trueVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &falseVal,
-						UpToDateBeforeMerge:  &trueVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &trueVal,
-						RequireCodeOwnerReviews:      &trueVal,
-						RequiredApprovingReviewCount: &oneVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        8,
+				NumberOfWarn: 1,
+				NumberOfInfo: 9,
 			},
 		},
 		{
 			name: "Branches are protected and require codeowner review",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         8,
-				NumberOfWarn:  1,
-				NumberOfInfo:  8,
-				NumberOfDebug: 0,
+			findings: []finding.Finding{
+				branchFinding(blocksDeleteOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(blocksForcePushOnBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchesAreProtected.Probe, "main", finding.OutcomeTrue),
+				branchFinding(branchProtectionAppliesToAdmins.Probe, "main", finding.OutcomeTrue),
+				branchFinding(dismissesStaleReviews.Probe, "main", finding.OutcomeTrue),
+				withValue(
+					branchFinding(requiresApproversForPullRequests.Probe, "main", finding.OutcomeTrue),
+					requiresApproversForPullRequests.RequiredReviewersKey, "1",
+				),
+				branchFinding(requiresCodeOwnersReview.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresLastPushApproval.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresUpToDateBranches.Probe, "main", finding.OutcomeTrue),
+				branchFinding(runsStatusChecksBeforeMerging.Probe, "main", finding.OutcomeTrue),
+				branchFinding(requiresPRsToChangeCode.Probe, "main", finding.OutcomeTrue),
 			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &trueVal,
-					RequireLinearHistory:    &trueVal,
-					RequireLastPushApproval: &trueVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &trueVal,
-						UpToDateBeforeMerge:  &trueVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &trueVal,
-						RequireCodeOwnerReviews:      &trueVal,
-						RequiredApprovingReviewCount: &oneVal,
-					},
-				},
-			},
-			codeownersFiles: []string{".github/CODEOWNERS"},
-		},
-		{
-			name: "Branches are protected and require codeowner review, but file is not present",
-			expected: scut.TestReturn{
-				Error:         nil,
-				Score:         5,
-				NumberOfWarn:  3,
-				NumberOfInfo:  7,
-				NumberOfDebug: 0,
-			},
-			branch: &clients.BranchRef{
-				Name:      &branchVal,
-				Protected: &trueVal,
-				BranchProtectionRule: clients.BranchProtectionRule{
-					EnforceAdmins:           &trueVal,
-					RequireLastPushApproval: &falseVal,
-					RequireLinearHistory:    &trueVal,
-					AllowForcePushes:        &falseVal,
-					AllowDeletions:          &falseVal,
-					CheckRules: clients.StatusChecksRule{
-						RequiresStatusChecks: &falseVal,
-						UpToDateBeforeMerge:  &trueVal,
-						Contexts:             []string{"foo"},
-					},
-					RequiredPullRequestReviews: clients.PullRequestReviewRule{
-						DismissStaleReviews:          &trueVal,
-						RequireCodeOwnerReviews:      &trueVal,
-						RequiredApprovingReviewCount: &oneVal,
-					},
-				},
+			result: scut.TestReturn{
+				Score:        8,
+				NumberOfWarn: 1,
+				NumberOfInfo: 9,
 			},
 		},
 	}
 	for _, tt := range tests {
-		tt := tt // Re-initializing variable so it is not changed while executing the closure below
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dl := scut.TestDetailLogger{}
-			score, err := testScore(tt.branch, tt.codeownersFiles, &dl)
-			actual := &checker.CheckResult{
-				Score: score,
-				Error: err,
-			}
-			if !scut.ValidateTestReturn(t, tt.name, &tt.expected, actual, &dl) {
-				t.Fail()
-			}
+			got := BranchProtection(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
 	}
+}
+
+// helper function to create findings for branch protection probes.
+func branchFinding(probe, branch string, outcome finding.Outcome) finding.Finding {
+	return finding.Finding{
+		Probe:   probe,
+		Outcome: outcome,
+		Values: map[string]string{
+			"branchName": branch,
+		},
+	}
+}
+
+//nolint:gocritic // not worried about param size / efficiency since this is a test
+func withValue(f finding.Finding, k, v string) finding.Finding {
+	f.Values[k] = v
+	return f
 }

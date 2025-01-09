@@ -15,10 +15,12 @@
 package checks
 
 import (
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/evaluation"
-	"github.com/ossf/scorecard/v4/checks/raw"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/evaluation"
+	"github.com/ossf/scorecard/v5/checks/raw"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/probes"
+	"github.com/ossf/scorecard/v5/probes/zrunner"
 )
 
 // CheckPinnedDependencies is the registered name for FrozenDeps.
@@ -27,8 +29,8 @@ const CheckPinnedDependencies = "Pinned-Dependencies"
 //nolint:gochecknoinits
 func init() {
 	supportedRequestTypes := []checker.RequestType{
-		checker.FileBased,
 		checker.CommitBased,
+		checker.FileBased,
 	}
 	if err := registerCheck(CheckPinnedDependencies, PinningDependencies, supportedRequestTypes); err != nil {
 		// This should never happen.
@@ -45,9 +47,18 @@ func PinningDependencies(c *checker.CheckRequest) checker.CheckResult {
 	}
 
 	// Set the raw results.
-	if c.RawResults != nil {
-		c.RawResults.PinningDependenciesResults = rawData
+	pRawResults := getRawResults(c)
+	pRawResults.PinningDependenciesResults = rawData
+
+	// Evaluate the probes.
+	findings, err := zrunner.Run(pRawResults, probes.PinnedDependencies)
+	if err != nil {
+		e := sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		return checker.CreateRuntimeErrorResult(CheckPinnedDependencies, e)
 	}
 
-	return evaluation.PinningDependencies(CheckPinnedDependencies, c, &rawData)
+	// Return the score evaluation.
+	ret := evaluation.PinningDependencies(CheckPinnedDependencies, findings, c.Dlogger)
+	ret.Findings = findings
+	return ret
 }

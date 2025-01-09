@@ -5,9 +5,14 @@ codecov:
     require_ci_to_pass: yes
 
 ignore:
+  - "**/*.pb.go"
   - "cron/**/*"
   - "clients/mockclients/**/*"
-  - "attestor/command/**/*"
+  # ignoring them as these are internal tools for generating docs.
+  - "docs/**/*"
+  # this is the runner
+  - "main.go"
+
 coverage:
   precision: 2
   round: down
@@ -16,16 +21,15 @@ coverage:
   status:
     project:
       default:
-        enabled: true
-        # allowed to drop coverage and still result in a "success" commit status
-        threshold: null
+        informational: true
         if_not_found: success
         if_no_uploads: success
         if_ci_failed: error
     patch:
       default:
-        enabled: true
-        threshold: 90%
+        # patch coverage should be within 10% of existing coverage
+        target: auto
+        threshold: 10%
         if_not_found: success
         if_no_uploads: success
         if_ci_failed: error

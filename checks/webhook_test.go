@@ -16,19 +16,17 @@ package checks
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestWebhooks(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		expected checker.CheckResult
 		uri      string
@@ -74,7 +72,7 @@ func TestWebhooks(t *testing.T) {
 			},
 		},
 		{
-			name: "With 2 Webhooks with and whitout secrets configured",
+			name: "With 2 Webhooks with and without secrets configured",
 			uri:  "github.com/owner/repo",
 			expected: checker.CheckResult{
 				Score: 5,
@@ -96,9 +94,7 @@ func TestWebhooks(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt // Re-initializing variable so it is not changed while executing the closure below
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			os.Setenv("SCORECARD_EXPERIMENTAL", "true")
+			t.Setenv("SCORECARD_EXPERIMENTAL", "true")
 			ctrl := gomock.NewController(t)
 			mockRepo := mockrepo.NewMockRepoClient(ctrl)
 

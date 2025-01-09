@@ -19,19 +19,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 type projectHandler struct {
 	glClient  *gitlab.Client
 	once      *sync.Once
 	errSetup  error
-	repourl   *repoURL
+	repourl   *Repo
 	createdAt time.Time
 	archived  bool
 }
 
-func (handler *projectHandler) init(repourl *repoURL) {
+func (handler *projectHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 	handler.errSetup = nil
 	handler.once = new(sync.Once)
@@ -39,7 +39,7 @@ func (handler *projectHandler) init(repourl *repoURL) {
 
 func (handler *projectHandler) setup() error {
 	handler.once.Do(func() {
-		proj, _, err := handler.glClient.Projects.GetProject(handler.repourl.project, &gitlab.GetProjectOptions{})
+		proj, _, err := handler.glClient.Projects.GetProject(handler.repourl.projectID, &gitlab.GetProjectOptions{})
 		if err != nil {
 			handler.errSetup = fmt.Errorf("request for project failed with error %w", err)
 			return

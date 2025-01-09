@@ -1,13 +1,14 @@
+id: effort-high
+lifecycle: stable
 short: short description
-desc: description
 motivation: >
   line1
   line2
 implementation: >
   line1
   line2
-risk: High
 remediation:
+  onOutcome: False
   effort: High
   text:
     - step1

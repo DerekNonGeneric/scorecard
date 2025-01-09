@@ -17,7 +17,7 @@ package checks
 import (
 	"context"
 	"errors"
-	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -25,42 +25,99 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	sce "github.com/ossf/scorecard/v5/errors"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func Test_SAST(t *testing.T) {
 	t.Parallel()
 
-	//nolint: govet, goerr113
 	tests := []struct {
-		name          string
-		commits       []clients.Commit
 		err           error
-		searchresult  clients.SearchResponse
-		checkRuns     []clients.CheckRun
 		searchRequest clients.SearchRequest
+		name          string
 		path          string
-		expected      checker.CheckResult
+		commits       []clients.Commit
+		checkRuns     []clients.CheckRun
+		searchresult  clients.SearchResponse
+		expected      scut.TestReturn
 	}{
 		{
-			name:         "SAST checker should return failed status when no PRs are found",
+			name:         "SAST checker should return min score when no PRs are found",
 			commits:      []clients.Commit{},
 			searchresult: clients.SearchResponse{},
 			checkRuns:    []clients.CheckRun{},
+			expected: scut.TestReturn{
+				Score:        checker.MinResultScore,
+				NumberOfWarn: 1,
+			},
 		},
 		{
-			name:         "SAST checker should return failed status when no PRs are found",
+			name:         "SAST checker should return failed status when an error occurs",
 			err:          errors.New("error"),
 			commits:      []clients.Commit{},
 			searchresult: clients.SearchResponse{},
 			checkRuns:    []clients.CheckRun{},
-			expected:     checker.CheckResult{Score: -1},
+			expected: scut.TestReturn{
+				Score: checker.InconclusiveResultScore,
+				Error: sce.ErrScorecardInternal,
+			},
 		},
 		{
-			name: "Successful SAST checker should return success status",
+			name: "Successful SAST checker should return success status for github-advanced-security",
+			commits: []clients.Commit{
+				{
+					AssociatedMergeRequest: clients.PullRequest{
+						MergedAt: time.Now().Add(time.Hour - 1),
+					},
+				},
+			},
+			searchresult: clients.SearchResponse{},
+			checkRuns: []clients.CheckRun{
+				{
+					Status:     "completed",
+					Conclusion: "success",
+					App: clients.CheckRunApp{
+						Slug: "github-advanced-security",
+					},
+				},
+			},
+			expected: scut.TestReturn{
+				Score:         checker.MaxResultScore,
+				NumberOfInfo:  1,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: "Successful SAST checker should return success status for github-code-scanning",
+			commits: []clients.Commit{
+				{
+					AssociatedMergeRequest: clients.PullRequest{
+						MergedAt: time.Now().Add(time.Hour - 1),
+					},
+				},
+			},
+			searchresult: clients.SearchResponse{},
+			checkRuns: []clients.CheckRun{
+				{
+					Status:     "completed",
+					Conclusion: "success",
+					App: clients.CheckRunApp{
+						Slug: "github-code-scanning",
+					},
+				},
+			},
+			expected: scut.TestReturn{
+				Score:         checker.MaxResultScore,
+				NumberOfInfo:  1,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: "Successful SAST checker should return success status for lgtm",
 			commits: []clients.Commit{
 				{
 					AssociatedMergeRequest: clients.PullRequest{
@@ -78,12 +135,129 @@ func Test_SAST(t *testing.T) {
 					},
 				},
 			},
-			expected: checker.CheckResult{
-				Score: 10,
+			path: "",
+			expected: scut.TestReturn{
+				Score:         checker.MaxResultScore,
+				NumberOfInfo:  1,
+				NumberOfDebug: 1,
 			},
 		},
 		{
-			name: "Failed SAST checker should return success status",
+			name: "Successful SAST checker should return success status for sonarcloud",
+			commits: []clients.Commit{
+				{
+					AssociatedMergeRequest: clients.PullRequest{
+						MergedAt: time.Now().Add(time.Hour - 1),
+					},
+				},
+			},
+			searchresult: clients.SearchResponse{},
+			checkRuns: []clients.CheckRun{
+				{
+					Status:     "completed",
+					Conclusion: "success",
+					App: clients.CheckRunApp{
+						Slug: "sonarcloud",
+					},
+				},
+			},
+			expected: scut.TestReturn{
+				Score:         checker.MaxResultScore,
+				NumberOfInfo:  1,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: "Airflow Workflow has CodeQL but has no check runs.",
+			err:  nil,
+			commits: []clients.Commit{
+				{
+					AssociatedMergeRequest: clients.PullRequest{
+						MergedAt: time.Now().Add(time.Hour - 1),
+					},
+				},
+			},
+			searchresult: clients.SearchResponse{},
+			path:         ".github/workflows/airflow-codeql-workflow.yaml",
+			expected: scut.TestReturn{
+				Score:        7,
+				NumberOfWarn: 1,
+				NumberOfInfo: 1,
+			},
+		},
+		{
+			name: "Airflow Workflow has CodeQL and two check runs.",
+			err:  nil,
+			commits: []clients.Commit{
+				{
+					AssociatedMergeRequest: clients.PullRequest{
+						MergedAt: time.Now().Add(time.Hour - 1),
+					},
+				},
+			},
+			searchresult: clients.SearchResponse{},
+			checkRuns: []clients.CheckRun{
+				{
+					Status:     "completed",
+					Conclusion: "success",
+					App: clients.CheckRunApp{
+						Slug: "lgtm-com",
+					},
+				},
+				{
+					Status:     "completed",
+					Conclusion: "success",
+					App: clients.CheckRunApp{
+						Slug: "lgtm-com",
+					},
+				},
+			},
+			path: ".github/workflows/airflow-codeql-workflow.yaml",
+			expected: scut.TestReturn{
+				Score:         checker.MaxResultScore,
+				NumberOfInfo:  2,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: `Airflow Workflow has CodeQL and two check runs one of 
+			which has wrong type of conclusion. The other is 'success'`,
+			err: nil,
+			commits: []clients.Commit{
+				{
+					AssociatedMergeRequest: clients.PullRequest{
+						MergedAt: time.Now().Add(time.Hour - 1),
+					},
+				},
+			},
+			searchresult: clients.SearchResponse{},
+			checkRuns: []clients.CheckRun{
+				{
+					Status:     "completed",
+					Conclusion: "wrongConclusionValue",
+					App: clients.CheckRunApp{
+						Slug: "lgtm-com",
+					},
+				},
+				{
+					Status:     "completed",
+					Conclusion: "success",
+					App: clients.CheckRunApp{
+						Slug: "lgtm-com",
+					},
+				},
+			},
+			path: ".github/workflows/airflow-codeql-workflow.yaml",
+			expected: scut.TestReturn{
+				Score:         checker.MaxResultScore,
+				NumberOfInfo:  2,
+				NumberOfDebug: 1,
+			},
+		},
+		{
+			name: `Airflow Workflow has CodeQL and two commits none of which 
+			ran the workflow.`,
+			err: nil,
 			commits: []clients.Commit{
 				{
 					AssociatedMergeRequest: clients.PullRequest{
@@ -92,124 +266,32 @@ func Test_SAST(t *testing.T) {
 				},
 				{
 					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 10),
-					},
-				},
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 20),
-					},
-				},
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 30),
-					},
-				},
-			},
-			path: ".github/workflows/github-workflow-sast-codeql.yaml",
-			checkRuns: []clients.CheckRun{
-				{
-					Status: "completed",
-					App: clients.CheckRunApp{
-						Slug: "lgtm-com",
-					},
-				},
-			},
-			expected: checker.CheckResult{
-				Score: 7,
-			},
-		},
-		{
-			name: "Failed SAST checker with checkRuns not completed",
-			commits: []clients.Commit{
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 1),
-					},
-				},
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 10),
-					},
-				},
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 20),
-					},
-				},
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now().Add(time.Hour - 30),
-					},
-				},
-			},
-			path: ".github/workflows/github-workflow-sast-no-codeql.yaml",
-			checkRuns: []clients.CheckRun{
-				{
-					App: clients.CheckRunApp{
-						Slug: "lgtm-com",
-					},
-				},
-			},
-			expected: checker.CheckResult{
-				Score: 0,
-			},
-		},
-		{
-			name: "Failed SAST with PullRequest not merged",
-			commits: []clients.Commit{
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						Number: 1,
+						MergedAt: time.Now().Add(time.Hour - 2),
 					},
 				},
 			},
 			searchresult: clients.SearchResponse{},
 			checkRuns: []clients.CheckRun{
 				{
+					Status:     "notCompletedForTestingOnly",
+					Conclusion: "notSuccessForTestingOnly",
+					App: clients.CheckRunApp{
+						Slug: "lgtm-com",
+					},
+				},
+				{
+					Status:     "notCompletedForTestingOnly",
+					Conclusion: "notSuccessForTestingOnly",
 					App: clients.CheckRunApp{
 						Slug: "lgtm-com",
 					},
 				},
 			},
-			expected: checker.CheckResult{
-				Score: 0,
-			},
-		},
-		{
-			name: "Merged PullRequest in a different repo",
-			commits: []clients.Commit{
-				{
-					AssociatedMergeRequest: clients.PullRequest{
-						MergedAt: time.Now(),
-						Number:   1,
-					},
-				},
-			},
-			searchresult: clients.SearchResponse{},
-			checkRuns: []clients.CheckRun{
-				{
-					App: clients.CheckRunApp{
-						Slug: "lgtm-com",
-					},
-				},
-			},
-			expected: checker.CheckResult{
-				Score: 0,
-			},
-		},
-		{
-			name: "sonartype config 1 line",
-			path: "pom-1line.xml",
-			expected: checker.CheckResult{
-				Score: 10,
-			},
-		},
-		{
-			name: "sonartype config 2 lines",
-			path: "pom-2lines.xml",
-			expected: checker.CheckResult{
-				Score: 10,
+			path: ".github/workflows/airflow-codeql-workflow.yaml",
+			expected: scut.TestReturn{
+				Score:        7,
+				NumberOfWarn: 1,
+				NumberOfInfo: 1,
 			},
 		},
 	}
@@ -238,15 +320,11 @@ func Test_SAST(t *testing.T) {
 					}
 					return []string{tt.path}, nil
 				}).AnyTimes()
-			mockRepoClient.EXPECT().GetFileContent(gomock.Any()).DoAndReturn(func(fn string) ([]byte, error) {
+			mockRepoClient.EXPECT().GetFileReader(gomock.Any()).DoAndReturn(func(fn string) (io.ReadCloser, error) {
 				if tt.path == "" {
-					return nil, nil
+					return io.NopCloser(strings.NewReader("")), nil
 				}
-				content, err := os.ReadFile("./testdata/" + tt.path)
-				if err != nil {
-					return content, fmt.Errorf("%w", err)
-				}
-				return content, nil
+				return os.Open("./testdata/" + tt.path)
 			}).AnyTimes()
 
 			dl := scut.TestDetailLogger{}
@@ -257,133 +335,7 @@ func Test_SAST(t *testing.T) {
 			}
 			res := SAST(&req)
 
-			if res.Score != tt.expected.Score {
-				t.Errorf("Expected score %d, got %d for %v", tt.expected.Score, res.Score, tt.name)
-			}
-			ctrl.Finish()
-		})
-	}
-}
-
-func Test_validateSonarConfig(t *testing.T) {
-	t.Parallel()
-
-	//nolint: govet
-	tests := []struct {
-		name      string
-		path      string
-		offset    uint
-		endOffset uint
-		url       string
-		score     int
-	}{
-		{
-			name:      "sonartype config 1 line",
-			path:      "./testdata/pom-1line.xml",
-			offset:    2,
-			endOffset: 2,
-			url:       "https://sonarqube.private.domain",
-		},
-		{
-			name:      "sonartype config 2 lines",
-			path:      "./testdata/pom-2lines.xml",
-			offset:    2,
-			endOffset: 4,
-			url:       "https://sonarqube.private.domain",
-		},
-		{
-			name: "wrong filename",
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			var config []sonarConfig
-			var content []byte
-			var err error
-			var path string
-			if tt.path != "" {
-				content, err = os.ReadFile(tt.path)
-				if err != nil {
-					t.Errorf("ReadFile: %v", err)
-				}
-				path = "pom.xml"
-			}
-			_, err = validateSonarConfig(path, content, &config)
-			if err != nil {
-				t.Errorf("Caught error: %v", err)
-			}
-
-			if path == "" {
-				if len(config) != 0 {
-					t.Errorf("Expected no result, got %d for %v", len(config), tt.name)
-				}
-				return
-			}
-			if len(config) != 1 {
-				t.Errorf("Expected 1 result, got %d for %v", len(config), tt.name)
-			}
-
-			if config[0].file.Offset != tt.offset {
-				t.Errorf("Expected offset %d, got %d for %v", tt.offset,
-					config[0].file.Offset, tt.name)
-			}
-
-			if config[0].file.EndOffset != tt.endOffset {
-				t.Errorf("Expected offset %d, got %d for %v", tt.endOffset,
-					config[0].file.EndOffset, tt.name)
-			}
-
-			if config[0].url != tt.url {
-				t.Errorf("Expected offset %v, got %v for %v", tt.url,
-					config[0].url, tt.name)
-			}
-		})
-	}
-}
-
-func Test_searchGitHubActionWorkflowCodeQL_invalid(t *testing.T) {
-	t.Parallel()
-
-	//nolint: govet
-	tests := []struct {
-		name string
-		path string
-		args []any
-	}{
-		{
-			name: "too few arguments",
-			path: ".github/workflows/github-workflow-sast-codeql.yaml",
-			args: []any{},
-		},
-		{
-			name: "wrong arguments",
-			path: ".github/workflows/github-workflow-sast-codeql.yaml",
-			args: []any{
-				&[]int{},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			var content []byte
-			var err error
-			if tt.path != "" {
-				content, err = os.ReadFile("./testdata/" + tt.path)
-				if err != nil {
-					t.Errorf("ReadFile: %v", err)
-				}
-			}
-			_, err = searchGitHubActionWorkflowCodeQL(tt.path, content, tt.args...)
-			if err == nil {
-				t.Errorf("Expected error but err was nil")
-			}
+			scut.ValidateTestReturn(t, tt.name, &tt.expected, &res, &dl)
 		})
 	}
 }

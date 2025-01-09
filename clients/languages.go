@@ -44,6 +44,9 @@ const (
 	// C#: https://docs.microsoft.com/en-us/dotnet/csharp/
 	CSharp LanguageName = "c#"
 
+	// ObjectiveC: the objective c language.
+	ObjectiveC LanguageName = "objectivec"
+
 	// Ruby: https://www.ruby-lang.org/
 	Ruby LanguageName = "ruby"
 
@@ -71,11 +74,23 @@ const (
 	// Dockerfile: https://docs.docker.com/engine/reference/builder/
 	Dockerfile LanguageName = "dockerfile"
 
+	// Erlang: https://www.erlang.org/
+	Erlang LanguageName = "erlang"
+
 	// Haskell: https://www.haskell.org/
 	Haskell LanguageName = "haskell"
 
+	// Elixir: https://www.elixir.org/
+	Elixir LanguageName = "elixir"
+
+	// Gleam: https://www.gleam.org/
+	Gleam LanguageName = "gleam"
+
 	// Other indicates other languages not listed by the GitHub API.
 	Other LanguageName = "other"
+
+	// All indicates all programming languages.
+	All LanguageName = "all"
 
 	// Add more languages here if needed,
 	// please use lowercases for the LanguageName value.

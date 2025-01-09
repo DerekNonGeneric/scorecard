@@ -21,7 +21,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	sce "github.com/ossf/scorecard/v4/errors"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
 type outcome struct {
@@ -65,6 +65,63 @@ func TestCsvIterator(t *testing.T) {
 			},
 		},
 		{
+			name:     "BasicGitlabOnly",
+			filename: "testdata/basic-gitlab-only.csv",
+			outcomes: []outcome{
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo: "gitlab.com/owner1/repo1",
+					},
+				},
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo:     "gitlab.com/owner3/path1/repo2",
+						Metadata: []string{"meta"},
+					},
+				},
+			},
+		},
+		{
+			name:     "BasicWithGitlab",
+			filename: "testdata/basic-with-gitlab.csv",
+			outcomes: []outcome{
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo: "github.com/owner1/repo1",
+					},
+				},
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo: "github.com/owner2/repo2",
+					},
+				},
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo:     "github.com/owner3/repo3",
+						Metadata: []string{"meta"},
+					},
+				},
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo: "gitlab.com/owner1/repo1",
+					},
+				},
+				{
+					hasError: false,
+					repo: RepoFormat{
+						Repo:     "gitlab.com/owner3/path1/repo2",
+						Metadata: []string{"meta"},
+					},
+				},
+			},
+		},
+		{
 			name:     "Comment",
 			filename: "testdata/comment.csv",
 			outcomes: []outcome{
@@ -95,15 +152,15 @@ func TestCsvIterator(t *testing.T) {
 			outcomes: []outcome{
 				{
 					hasError:    true,
-					expectedErr: sce.ErrorUnsupportedHost,
+					expectedErr: sce.ErrInvalidURL,
 				},
 				{
 					hasError:    true,
-					expectedErr: sce.ErrorInvalidURL,
+					expectedErr: sce.ErrInvalidURL,
 				},
 				{
 					hasError:    true,
-					expectedErr: sce.ErrorInvalidURL,
+					expectedErr: sce.ErrInvalidURL,
 				},
 			},
 		},

@@ -19,11 +19,11 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	sce "github.com/ossf/scorecard/v4/errors"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	sce "github.com/ossf/scorecard/v5/errors"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func getBranchName(branch *clients.BranchRef) string {
@@ -57,7 +57,6 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 
 	rel1 := "release/v.1"
 	sha := "8fb3cb86082b17144a80402f5367ae65f06083bd"
-	//nolint:goconst
 	main := "main"
 	trueVal := true
 	falseVal := false
@@ -65,15 +64,14 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 
 	var oneVal int32 = 1
 
-	//nolint
 	tests := []struct {
 		name          string
-		expected      scut.TestReturn
-		branches      []*clients.BranchRef
 		defaultBranch string
+		branches      []*clients.BranchRef
 		releases      []string
-		nonadmin      bool
 		repoFiles     []string
+		expected      scut.TestReturn
+		nonadmin      bool
 	}{
 		{
 			name: "Nil release and main branch names",
@@ -87,7 +85,6 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 			defaultBranch: main,
 			branches: []*clients.BranchRef{
 				{
-					Name:      nil,
 					Protected: &trueVal,
 					BranchProtectionRule: clients.BranchProtectionRule{
 						CheckRules: clients.StatusChecksRule{
@@ -95,7 +92,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &trueVal,
 							Contexts:             []string{"foo"},
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &trueVal,
 							RequireCodeOwnerReviews:      &trueVal,
 							RequiredApprovingReviewCount: &oneVal,
@@ -107,7 +105,6 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 					},
 				},
 				{
-					Name:      nil,
 					Protected: &trueVal,
 					BranchProtectionRule: clients.BranchProtectionRule{
 						CheckRules: clients.StatusChecksRule{
@@ -115,7 +112,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &falseVal,
 							Contexts:             nil,
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &falseVal,
 							RequireCodeOwnerReviews:      &falseVal,
 							RequiredApprovingReviewCount: &zeroVal,
@@ -134,9 +132,9 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 			name: "Only development branch",
 			expected: scut.TestReturn{
 				Error:         nil,
-				Score:         2,
+				Score:         3,
 				NumberOfWarn:  7,
-				NumberOfInfo:  2,
+				NumberOfInfo:  3,
 				NumberOfDebug: 0,
 			},
 			defaultBranch: main,
@@ -154,7 +152,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &falseVal,
 							Contexts:             nil,
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &falseVal,
 							RequireCodeOwnerReviews:      &falseVal,
 							RequiredApprovingReviewCount: &zeroVal,
@@ -173,9 +172,9 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 			name: "Take worst of release and development",
 			expected: scut.TestReturn{
 				Error:         nil,
-				Score:         2,
+				Score:         4,
 				NumberOfWarn:  9,
-				NumberOfInfo:  10,
+				NumberOfInfo:  11,
 				NumberOfDebug: 0,
 			},
 			defaultBranch: main,
@@ -189,7 +188,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &trueVal,
 							Contexts:             []string{"foo"},
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &trueVal,
 							RequireCodeOwnerReviews:      &trueVal,
 							RequiredApprovingReviewCount: &oneVal,
@@ -210,7 +210,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &falseVal,
 							Contexts:             nil,
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &falseVal,
 							RequireCodeOwnerReviews:      &falseVal,
 							RequiredApprovingReviewCount: &zeroVal,
@@ -245,7 +246,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &trueVal,
 							Contexts:             []string{"foo"},
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &trueVal,
 							RequireCodeOwnerReviews:      &trueVal,
 							RequiredApprovingReviewCount: &oneVal,
@@ -266,7 +268,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &trueVal,
 							Contexts:             []string{"foo"},
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &trueVal,
 							RequireCodeOwnerReviews:      &trueVal,
 							RequiredApprovingReviewCount: &oneVal,
@@ -285,9 +288,9 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 			name: "Ignore a non-branch targetcommitish",
 			expected: scut.TestReturn{
 				Error:         nil,
-				Score:         2,
+				Score:         3,
 				NumberOfWarn:  7,
-				NumberOfInfo:  2,
+				NumberOfInfo:  3,
 				NumberOfDebug: 0,
 			},
 			defaultBranch: main,
@@ -302,7 +305,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &falseVal,
 							Contexts:             nil,
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &falseVal,
 							RequireCodeOwnerReviews:      &falseVal,
 							RequiredApprovingReviewCount: &zeroVal,
@@ -340,7 +344,8 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 							UpToDateBeforeMerge:  &falseVal,
 							Contexts:             nil,
 						},
-						RequiredPullRequestReviews: clients.PullRequestReviewRule{
+						PullRequestRule: clients.PullRequestRule{
+							Required:                     &trueVal,
 							DismissStaleReviews:          &falseVal,
 							RequireCodeOwnerReviews:      &falseVal,
 							RequiredApprovingReviewCount: &zeroVal,
@@ -360,7 +365,7 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 				Score:         0,
 				NumberOfWarn:  4,
 				NumberOfInfo:  0,
-				NumberOfDebug: 8,
+				NumberOfDebug: 10,
 			},
 			nonadmin:      true,
 			defaultBranch: main,
@@ -426,9 +431,7 @@ func TestReleaseAndDevBranchProtected(t *testing.T) {
 				RepoClient: mockRepoClient,
 			}
 			r := BranchProtection(&req)
-			if !scut.ValidateTestReturn(t, tt.name, &tt.expected, &r, &dl) {
-				t.Fail()
-			}
+			scut.ValidateTestReturn(t, tt.name, &tt.expected, &r, &dl)
 			ctrl.Finish()
 		})
 	}
