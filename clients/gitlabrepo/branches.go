@@ -16,29 +16,53 @@ package gitlabrepo
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type branchesHandler struct {
-	glClient         *gitlab.Client
-	once             *sync.Once
-	errSetup         error
-	repourl          *repoURL
-	defaultBranchRef *clients.BranchRef
+	glClient                 *gitlab.Client
+	once                     *sync.Once
+	errSetup                 error
+	repourl                  *Repo
+	defaultBranchRef         *clients.BranchRef
+	queryProject             fnProject
+	queryBranch              fnQueryBranch
+	getProtectedBranch       fnProtectedBranch
+	getProjectChecks         fnListProjectStatusChecks
+	getApprovalConfiguration fnGetApprovalConfiguration
 }
 
-func (handler *branchesHandler) init(repourl *repoURL) {
+func (handler *branchesHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 	handler.errSetup = nil
 	handler.once = new(sync.Once)
+	handler.queryProject = handler.glClient.Projects.GetProject
+	handler.queryBranch = handler.glClient.Branches.GetBranch
+	handler.getProtectedBranch = handler.glClient.ProtectedBranches.GetProtectedBranch
+	handler.getProjectChecks = handler.glClient.ExternalStatusChecks.ListProjectStatusChecks
+	handler.getApprovalConfiguration = handler.glClient.Projects.GetApprovalConfiguration
 }
 
-// nolint: nestif
+type (
+	fnProject func(pid interface{}, opt *gitlab.GetProjectOptions,
+		options ...gitlab.RequestOptionFunc) (*gitlab.Project, *gitlab.Response, error)
+	fnQueryBranch func(pid interface{}, branch string,
+		options ...gitlab.RequestOptionFunc) (*gitlab.Branch, *gitlab.Response, error)
+	fnProtectedBranch func(pid interface{}, branch string,
+		options ...gitlab.RequestOptionFunc) (*gitlab.ProtectedBranch, *gitlab.Response, error)
+	fnListProjectStatusChecks func(pid interface{}, opt *gitlab.ListOptions,
+		options ...gitlab.RequestOptionFunc) ([]*gitlab.ProjectStatusCheck, *gitlab.Response, error)
+	fnGetApprovalConfiguration func(pid interface{},
+		options ...gitlab.RequestOptionFunc) (*gitlab.ProjectApprovals, *gitlab.Response, error)
+)
+
+//nolint:nestif
 func (handler *branchesHandler) setup() error {
 	handler.once.Do(func() {
 		if !strings.EqualFold(handler.repourl.commitSHA, clients.HeadSHA) {
@@ -46,39 +70,37 @@ func (handler *branchesHandler) setup() error {
 			return
 		}
 
-		proj, _, err := handler.glClient.Projects.GetProject(handler.repourl.project, &gitlab.GetProjectOptions{})
+		proj, _, err := handler.queryProject(handler.repourl.projectID, &gitlab.GetProjectOptions{})
 		if err != nil {
-			handler.errSetup = fmt.Errorf("requirest for project failed with error %w", err)
+			handler.errSetup = fmt.Errorf("request for project failed with error %w", err)
 			return
 		}
 
-		branch, _, err := handler.glClient.Branches.GetBranch(handler.repourl.project, proj.DefaultBranch)
+		branch, _, err := handler.queryBranch(handler.repourl.projectID, proj.DefaultBranch)
 		if err != nil {
 			handler.errSetup = fmt.Errorf("request for default branch failed with error %w", err)
 			return
 		}
 
 		if branch.Protected {
-			protectedBranch, resp, err := handler.glClient.ProtectedBranches.GetProtectedBranch(
-				handler.repourl.project, branch.Name)
-			if err != nil && resp.StatusCode != 403 {
+			protectedBranch, resp, err := handler.getProtectedBranch(
+				handler.repourl.projectID, branch.Name)
+			if err != nil && resp.StatusCode != http.StatusForbidden {
 				handler.errSetup = fmt.Errorf("request for protected branch failed with error %w", err)
 				return
-			} else if resp.StatusCode == 403 {
+			} else if resp.StatusCode == http.StatusForbidden {
 				handler.errSetup = fmt.Errorf("incorrect permissions to fully check branch protection %w", err)
 				return
 			}
 
-			projectStatusChecks, resp, err := handler.glClient.ExternalStatusChecks.ListProjectStatusChecks(
-				handler.repourl.project, &gitlab.ListOptions{})
-			if (err != nil || resp.StatusCode != 404) &&
-				resp.StatusCode != 401 { // 401: permissions. pass token authorization issues silently
+			projectStatusChecks, resp, err := handler.getProjectChecks(handler.repourl.projectID, &gitlab.ListOptions{})
+
+			if resp.StatusCode != http.StatusOK || err != nil {
 				handler.errSetup = fmt.Errorf("request for external status checks failed with error %w", err)
-				return
 			}
 
-			projectApprovalRule, resp, err := handler.glClient.Projects.GetApprovalConfiguration(handler.repourl.project)
-			if err != nil && resp.StatusCode != 404 {
+			projectApprovalRule, resp, err := handler.getApprovalConfiguration(handler.repourl.projectID)
+			if err != nil && resp.StatusCode != http.StatusNotFound {
 				handler.errSetup = fmt.Errorf("request for project approval rule failed with %w", err)
 				return
 			}
@@ -106,25 +128,35 @@ func (handler *branchesHandler) getDefaultBranch() (*clients.BranchRef, error) {
 }
 
 func (handler *branchesHandler) getBranch(branch string) (*clients.BranchRef, error) {
-	bran, _, err := handler.glClient.Branches.GetBranch(handler.repourl.project, branch)
+	if strings.Contains(branch, "/-/commit/") {
+		// Gitlab's release commitish contains commit and is not easily tied to specific branch
+		p, b := true, ""
+		ret := &clients.BranchRef{
+			Name:      &b,
+			Protected: &p,
+		}
+		return ret, nil
+	}
+
+	bran, _, err := handler.queryBranch(handler.repourl.projectID, branch)
 	if err != nil {
-		return nil, fmt.Errorf("error getting branch in branchsHandler.getBranch: %w", err)
+		return nil, fmt.Errorf("error getting branch in branchesHandler.getBranch: %w", err)
 	}
 
 	if bran.Protected {
-		protectedBranch, _, err := handler.glClient.ProtectedBranches.GetProtectedBranch(handler.repourl.project, bran.Name)
+		protectedBranch, _, err := handler.getProtectedBranch(handler.repourl.projectID, bran.Name)
 		if err != nil {
 			return nil, fmt.Errorf("request for protected branch failed with error %w", err)
 		}
 
-		projectStatusChecks, resp, err := handler.glClient.ExternalStatusChecks.ListProjectStatusChecks(
-			handler.repourl.project, &gitlab.ListOptions{})
-		if err != nil && resp.StatusCode != 404 {
+		projectStatusChecks, resp, err := handler.getProjectChecks(
+			handler.repourl.projectID, &gitlab.ListOptions{})
+		if err != nil && resp.StatusCode != http.StatusNotFound {
 			return nil, fmt.Errorf("request for external status checks failed with error %w", err)
 		}
 
-		projectApprovalRule, resp, err := handler.glClient.Projects.GetApprovalConfiguration(handler.repourl.project)
-		if err != nil && resp.StatusCode != 404 {
+		projectApprovalRule, resp, err := handler.getApprovalConfiguration(handler.repourl.projectID)
+		if err != nil && resp.StatusCode != http.StatusNotFound {
 			return nil, fmt.Errorf("request for project approval rule failed with %w", err)
 		}
 
@@ -161,7 +193,8 @@ func makeBranchRefFrom(branch *gitlab.Branch, protectedBranch *gitlab.ProtectedB
 		Contexts:             makeContextsFromResp(projectStatusChecks),
 	}
 
-	pullRequestReviewRule := clients.PullRequestReviewRule{
+	pullRequestReviewRule := clients.PullRequestRule{
+		// TODO how do we know if they're required?
 		DismissStaleReviews:     newTrue(),
 		RequireCodeOwnerReviews: &protectedBranch.CodeOwnerApprovalRequired,
 	}
@@ -175,11 +208,11 @@ func makeBranchRefFrom(branch *gitlab.Branch, protectedBranch *gitlab.ProtectedB
 		Name:      &branch.Name,
 		Protected: &branch.Protected,
 		BranchProtectionRule: clients.BranchProtectionRule{
-			RequiredPullRequestReviews: pullRequestReviewRule,
-			AllowDeletions:             newFalse(),
-			AllowForcePushes:           &protectedBranch.AllowForcePush,
-			EnforceAdmins:              newTrue(),
-			CheckRules:                 statusChecksRule,
+			PullRequestRule:  pullRequestReviewRule,
+			AllowDeletions:   newFalse(),
+			AllowForcePushes: &protectedBranch.AllowForcePush,
+			EnforceAdmins:    newTrue(),
+			CheckRules:       statusChecksRule,
 		},
 	}
 

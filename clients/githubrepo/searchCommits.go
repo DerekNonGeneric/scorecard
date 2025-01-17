@@ -19,18 +19,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type searchCommitsHandler struct {
 	ghClient *github.Client
 	ctx      context.Context
-	repourl  *repoURL
+	repourl  *Repo
 }
 
-func (handler *searchCommitsHandler) init(ctx context.Context, repourl *repoURL) {
+func (handler *searchCommitsHandler) init(ctx context.Context, repourl *Repo) {
 	handler.ctx = ctx
 	handler.repourl = repourl
 }

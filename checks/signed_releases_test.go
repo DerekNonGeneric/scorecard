@@ -15,21 +15,22 @@
 package checks
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	"github.com/ossf/scorecard/v5/internal/packageclient"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestSignedRelease(t *testing.T) {
 	t.Parallel()
-	//fieldalignment lint issue. Ignoring it as it is not important for this test.
-	//nolint
 	tests := []struct {
 		err      error
 		name     string
@@ -43,7 +44,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with no assests",
+			name: "Releases with no assets",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -57,7 +58,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests without signed artifacts",
+			name: "Releases with assets without signed artifacts",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -76,7 +77,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests with signed artifacts-asc",
+			name: "Releases with assets with signed artifacts-asc",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -95,7 +96,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests with intoto SLSA provenance",
+			name: "Releases with assets with intoto SLSA provenance",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -114,7 +115,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests with signed artifacts-sig",
+			name: "Releases with assets with signed artifacts-sig",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -133,7 +134,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests with signed artifacts-sign",
+			name: "Releases with assets with signed artifacts-sign",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -152,7 +153,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests with signed artifacts-minisig",
+			name: "Releases with assets with signed artifacts-minisig",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -171,7 +172,26 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Releases with assests with signed and unsigned artifacts",
+			name: "Releases with assets with signed artifacts-sigstore",
+			releases: []clients.Release{
+				{
+					TagName:         "v1.0.0",
+					URL:             "http://foo.com/v1.0.0",
+					TargetCommitish: "master",
+					Assets: []clients.ReleaseAsset{
+						{
+							Name: "foo.sigstore",
+							URL:  "http://foo.com/v1.0.0/foo.sigstore",
+						},
+					},
+				},
+			},
+			expected: checker.CheckResult{
+				Score: 8,
+			},
+		},
+		{
+			name: "Releases with assets with signed and unsigned artifacts",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -194,7 +214,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Multiple Releases with assests with signed and unsigned artifacts",
+			name: "Multiple Releases with assets with signed and unsigned artifacts",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -232,7 +252,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "Some releases with assests with signed and unsigned artifacts",
+			name: "Some releases with assets with signed and unsigned artifacts",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -266,7 +286,7 @@ func TestSignedRelease(t *testing.T) {
 			},
 		},
 		{
-			name: "6 Releases with assests with signed artifacts",
+			name: "6 Releases with assets with signed artifacts",
 			releases: []clients.Release{
 				{
 					TagName:         "v1.0.0",
@@ -363,6 +383,43 @@ func TestSignedRelease(t *testing.T) {
 				Score: 8,
 			},
 		},
+
+		{
+			name: "Error getting releases",
+			err:  errors.New("Error getting releases"),
+			expected: checker.CheckResult{
+				Score: -1,
+				Error: errors.New("Error getting releases"),
+			},
+		},
+		{
+			name: "9 Releases with assets with signed artifacts",
+			releases: []clients.Release{
+				release("v0.8.5"),
+				release("v0.8.4"),
+				release("v0.8.3"),
+				release("v0.8.2"),
+				release("v0.8.1"),
+				release("v0.8.0"),
+				release("v0.7.0"),
+				release("v0.6.0"),
+				release("v0.5.0"),
+				release("v0.4.0"),
+				release("v0.3.0"),
+				release("v0.2.0"),
+				release("v0.1.0"),
+				release("v0.0.6"),
+				release("v0.0.5"),
+				release("v0.0.4"),
+				release("v0.0.3"),
+				release("v0.0.2"),
+				release("v0.0.1"),
+			},
+			expected: checker.CheckResult{
+				Score: 8,
+			},
+		},
+
 		{
 			name: "Error getting releases",
 			err:  errors.New("Error getting releases"),
@@ -380,8 +437,8 @@ func TestSignedRelease(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 
-			mockRepo := mockrepo.NewMockRepoClient(ctrl)
-			mockRepo.EXPECT().ListReleases().DoAndReturn(
+			mockRepoC := mockrepo.NewMockRepoClient(ctrl)
+			mockRepoC.EXPECT().ListReleases().DoAndReturn(
 				func() ([]clients.Release, error) {
 					if tt.err != nil {
 						return nil, tt.err
@@ -390,8 +447,30 @@ func TestSignedRelease(t *testing.T) {
 				},
 			).MinTimes(1)
 
+			mockRepo := mockrepo.NewMockRepo(ctrl)
+			mockRepo.EXPECT().Host().DoAndReturn(
+				func() string {
+					return ""
+				},
+			).AnyTimes()
+			mockRepo.EXPECT().Path().DoAndReturn(
+				func() string {
+					return ""
+				},
+			).AnyTimes()
+
+			mockPkgC := mockrepo.NewMockProjectPackageClient(ctrl)
+			mockPkgC.EXPECT().GetProjectPackageVersions(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(ctx context.Context, host, project string) (*packageclient.ProjectPackageVersions, error) {
+					v := packageclient.ProjectPackageVersions{}
+					return &v, nil
+				},
+			).AnyTimes()
+
 			req := checker.CheckRequest{
-				RepoClient: mockRepo,
+				RepoClient:    mockRepoC,
+				Repo:          mockRepo,
+				ProjectClient: mockPkgC,
 			}
 			req.Dlogger = &scut.TestDetailLogger{}
 			res := SignedReleases(&req)
@@ -409,5 +488,47 @@ func TestSignedRelease(t *testing.T) {
 			}
 			ctrl.Finish()
 		})
+	}
+}
+
+func release(version string) clients.Release {
+	return clients.Release{
+		TagName:         version,
+		URL:             fmt.Sprintf("https://github.com/test/test_artifact/releases/tag/%s", version),
+		TargetCommitish: "master",
+		Assets: []clients.ReleaseAsset{
+			{
+				Name: fmt.Sprintf("%s_checksums.txt", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_checksums.txt", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_checksums.txt.sig", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_checksums.txt.sig", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_darwin_x86_64.tar.gz", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_darwin_x86_64.tar.gz", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_Linux_arm64.tar.gz", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_Linux_arm64.tar.gz", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_Linux_i386.tar.gz", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_Linux_i386.tar.gz", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_Linux_x86_64.tar.gz", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_Linux_x86_64.tar.gz", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_windows_i386.tar.gz", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_windows_i386.tar.gz", version, version),
+			},
+			{
+				Name: fmt.Sprintf("%s_windows_x86_64.tar.gz", version),
+				URL:  fmt.Sprintf("https://github.com/test/repo/releases/%s/%s_windows_x86_64.tar.gz", version, version),
+			},
+		},
 	}
 }

@@ -15,19 +15,22 @@
 package checks
 
 import (
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/evaluation"
-	"github.com/ossf/scorecard/v4/checks/raw"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/evaluation"
+	"github.com/ossf/scorecard/v5/checks/raw"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/probes"
+	"github.com/ossf/scorecard/v5/probes/zrunner"
 )
 
-// CheckSecurityPolicy is the registred name for SecurityPolicy.
+// CheckSecurityPolicy is the registered name for SecurityPolicy.
 const CheckSecurityPolicy = "Security-Policy"
 
 //nolint:gochecknoinits
 func init() {
 	supportedRequestTypes := []checker.RequestType{
 		checker.CommitBased,
+		checker.FileBased,
 	}
 	if err := registerCheck(CheckSecurityPolicy, SecurityPolicy, supportedRequestTypes); err != nil {
 		// This should never happen.
@@ -44,9 +47,18 @@ func SecurityPolicy(c *checker.CheckRequest) checker.CheckResult {
 	}
 
 	// Set the raw results.
-	if c.RawResults != nil {
-		c.RawResults.SecurityPolicyResults = rawData
+	pRawResults := getRawResults(c)
+	pRawResults.SecurityPolicyResults = rawData
+
+	// Evaluate the probes.
+	findings, err := zrunner.Run(pRawResults, probes.SecurityPolicy)
+	if err != nil {
+		e := sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		return checker.CreateRuntimeErrorResult(CheckSecurityPolicy, e)
 	}
 
-	return evaluation.SecurityPolicy(CheckSecurityPolicy, c.Dlogger, &rawData)
+	// Return the score evaluation.
+	ret := evaluation.SecurityPolicy(CheckSecurityPolicy, findings, c.Dlogger)
+	ret.Findings = findings
+	return ret
 }

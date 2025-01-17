@@ -18,19 +18,19 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/clients"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
 type statusesHandler struct {
 	client  *github.Client
 	ctx     context.Context
-	repourl *repoURL
+	repourl *Repo
 }
 
-func (handler *statusesHandler) init(ctx context.Context, repourl *repoURL) {
+func (handler *statusesHandler) init(ctx context.Context, repourl *Repo) {
 	handler.ctx = ctx
 	handler.repourl = repourl
 }

@@ -15,75 +15,47 @@
 package evaluation
 
 import (
-	"fmt"
-
-	"github.com/ossf/scorecard/v4/checker"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/packagedWithAutomatedWorkflow"
 )
 
 // Packaging applies the score policy for the Packaging check.
-func Packaging(name string, dl checker.DetailLogger, r *checker.PackagingData) checker.CheckResult {
-	if r == nil {
-		e := sce.WithMessage(sce.ErrScorecardInternal, "empty raw data")
+func Packaging(name string,
+	findings []finding.Finding,
+	dl checker.DetailLogger,
+) checker.CheckResult {
+	expectedProbes := []string{
+		packagedWithAutomatedWorkflow.Probe,
+	}
+
+	if !finding.UniqueProbesEqual(findings, expectedProbes) {
+		e := sce.WithMessage(sce.ErrScorecardInternal, "invalid probe results")
 		return checker.CreateRuntimeErrorResult(name, e)
 	}
 
-	pass := false
-	for _, p := range r.Packages {
-		if p.Msg != nil {
-			// This is a debug message. Let's just replay the message.
-			dl.Debug(&checker.LogMessage{
-				Text: *p.Msg,
-			})
-			continue
+	// Currently there is only a single packaging probe that returns
+	// a single true or false outcome. As such, in this evaluation,
+	// we return max score if the outcome is true and lowest score if
+	// the outcome is false.
+	maxScore := false
+	for i := range findings {
+		f := &findings[i]
+		var logLevel checker.DetailType
+		switch f.Outcome {
+		case finding.OutcomeFalse:
+			logLevel = checker.DetailWarn
+		case finding.OutcomeTrue:
+			maxScore = true
+			logLevel = checker.DetailInfo
+		default:
+			logLevel = checker.DetailDebug
 		}
-
-		// Presence of a single non-debug message means the
-		// check passes.
-		pass = true
-
-		msg, err := createLogMessage(p)
-		if err != nil {
-			return checker.CreateRuntimeErrorResult(name, err)
-		}
-		dl.Info(&msg)
+		checker.LogFinding(dl, f, logLevel)
 	}
-
-	if pass {
-		return checker.CreateMaxScoreResult(name,
-			"publishing workflow detected")
+	if maxScore {
+		return checker.CreateMaxScoreResult(name, "packaging workflow detected")
 	}
-
-	dl.Warn(&checker.LogMessage{
-		Text: "no GitHub publishing workflow detected",
-	})
-
-	return checker.CreateInconclusiveResult(name,
-		"no published package detected")
-}
-
-func createLogMessage(p checker.Package) (checker.LogMessage, error) {
-	var msg checker.LogMessage
-
-	if p.Msg != nil {
-		return msg, sce.WithMessage(sce.ErrScorecardInternal, "Msg should be nil")
-	}
-
-	if p.File == nil {
-		return msg, sce.WithMessage(sce.ErrScorecardInternal, "File field is nil")
-	}
-
-	if p.File != nil {
-		msg.Path = p.File.Path
-		msg.Type = p.File.Type
-		msg.Offset = p.File.Offset
-	}
-
-	if len(p.Runs) == 0 {
-		return msg, sce.WithMessage(sce.ErrScorecardInternal, "no run data")
-	}
-
-	msg.Text = fmt.Sprintf("GitHub publishing workflow used in run %s", p.Runs[0].URL)
-
-	return msg, nil
+	return checker.CreateInconclusiveResult(name, "packaging workflow not detected")
 }

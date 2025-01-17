@@ -38,7 +38,7 @@ checks:
       changed. A lack of active maintenance should signal that potential users should
       investigate further to judge the situation.
 
-      This check will only succeed if a Github project is >90 days old. Projects
+      This check will only succeed if a GitHub project is >90 days old. Projects
       that are younger than this are too new to assess whether they are maintained
       or not, and users should inspect the contents of those projects to ensure they
       are as expected.
@@ -58,9 +58,8 @@ checks:
 
       This check tries to determine if the project uses a dependency update tool,
       specifically one of:
-      - [dependabot](https://docs.github.com/en/code-security/supply-chain-security/keeping-your-dependencies-updated-automatically/configuration-options-for-dependency-updates)
-      - [renovatebot](https://docs.renovatebot.com/configuration-options/)
-      - [Sonatype Lift](https://help.sonatype.com/lift/getting-started)
+      - [Dependabot](https://docs.github.com/en/code-security/supply-chain-security/keeping-your-dependencies-updated-automatically/configuration-options-for-dependency-updates)
+      - [Renovate bot](https://docs.renovatebot.com/configuration-options/)
       - [PyUp](https://docs.pyup.io/docs) (Python)
       Out-of-date dependencies make a project vulnerable to known flaws and prone to attacks.
       These tools automate the process of updating dependencies by scanning for
@@ -78,20 +77,20 @@ checks:
 
     remediation:
       - >-
-        Signup for automatic dependency updates with one of the previously listed dependency update tools and place
+        Sign up for automatic dependency updates with one of the previously listed dependency update tools and place
         the config file in the locations that are recommended by these tools. Due to
         https://github.com/dependabot/dependabot-core/issues/2804 Dependabot can
         be enabled for forks where security updates have ever been turned on so projects
         maintaining stable forks should evaluate whether this behavior is satisfactory
         before turning it on.
       - >-
-        Unlike dependabot, renovatebot has support to migrate dockerfiles' dependencies from version pinning to hash pinning
+        Unlike Dependabot, Renovate bot has support to migrate dockerfiles' dependencies from version pinning to hash pinning
         via the [pinDigests setting](https://docs.renovatebot.com/configuration-options/#pindigests) without
-        aditional manual effort.
+        additional manual effort.
   Binary-Artifacts:
     risk: High
     tags: supply-chain, security, dependencies
-    repos: GitHub, local
+    repos: GitHub, GitLab, local
     short: Determines if the project has generated executable (binary) artifacts in the source repository.
     description: |
       Risk: `High` (non-reviewable code)
@@ -142,30 +141,37 @@ checks:
   Branch-Protection:
     risk: High
     tags: supply-chain, security, source-code, code-reviews
-    repos: GitHub
+    repos: GitHub, GitLab
     short: Determines if the default and release branches are protected with GitHub's branch protection settings.
     description: |
       Risk: `High` (vulnerable to intentional malicious code injection)
 
       This check determines whether a project's default and release branches are
-      protected with GitHub's [branch protection](https://docs.github.com/en/github/administering-a-repository/defining-the-mergeability-of-pull-requests/about-protected-branches) settings.
+      protected with GitHub's [branch protection](https://docs.github.com/github/administering-a-repository/defining-the-mergeability-of-pull-requests/about-protected-branches) 
+      or [repository rules](https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets) settings.
       Branch protection allows maintainers to define rules that enforce
       certain workflows for branches, such as requiring review or passing certain
       status checks before acceptance into a main branch, or preventing rewriting of
       public history.
 
-      Note: The following settings queried by the Branch-Protection check require an admin token: `DismissStaleReviews`, `EnforceAdmin`, `StrictStatusCheck` and `RequireCodeownerReview`. If
+      Note: The following settings queried by the Branch-Protection check require an admin token: `DismissStaleReviews`, `EnforceAdmins`, `RequireLastPushApproval`, `RequiresStatusChecks` and `UpToDateBeforeMerge`. If
       the provided token does not have admin access, the check will query the branch
       settings accessible to non-admins and provide results based only on these settings.
-      Even so, we recommend using a non-admin token, which provides a thorough enough
-      result to meet most user needs.
+      However, all of these settings are accessible via Repo Rules. `EnforceAdmins` is calculated slightly differently.
+      This setting is calculated as `false` if any [Bypass Actors](https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository#granting-bypass-permissions-for-your-ruleset)
+       are defined on any rule, regardless of if they are admins.
 
       Different types of branch protection protect against different risks:
 
-        - Require code review: requires at least one reviewer, which greatly
+        - Require code review: 
+          - requires at least one reviewer, which greatly
           reduces the risk that a compromised contributor can inject malicious code.
           Review also increases the likelihood that an unintentional vulnerability in
           a contribution will be detected and fixed before the change is accepted.
+
+          - requiring two or more reviewers protects even more from the insider risk 
+          whereby a compromised contributor can be used by an attacker to LGTM 
+          the attacker PR and inject a malicious code as if it was legit.
 
         - Prevent force push: prevents use of the `--force` command on public
           branches, which overwrites code irrevocably. This protection prevents the
@@ -177,7 +183,7 @@ checks:
       Although requiring code review can greatly reduce the chance that
       unintentional or malicious code enters the "main" branch, it is not feasible for
       all projects, such as those that don't have many active participants. For more
-      discussion, see [Code Reviews](https://github.com/ossf/scorecard/blob/main/docs/checks.md#code-reviews).
+      discussion, see [Code Reviews](https://github.com/ossf/scorecard/blob/main/docs/checks.md#code-review).
 
       Additionally, in some cases these rules will need to be suspended. For example,
       if a past commit includes illegal content such as child pornography, it may be
@@ -186,38 +192,42 @@ checks:
 
       This test has tiered scoring. Each tier must be fully satisfied to achieve points at the next tier. For example, if you fulfill the Tier 3 checks but do not fulfill all the Tier 2 checks, you will not receive any points for Tier 3.
 
-      Note: If Scorecard is run without an administrative access token, the requirements that specify “For administrators” are ignored.
+      Note: If Scorecard is run without an administrative access token, the requirements that specify “For administrators” can be safely ignored, and scores will be determined as if all such requirements have been met.
 
       Tier 1 Requirements (3/10 points):
         - Prevent force push
         - Prevent branch deletion
-        - For administrators: Include administrator for review
 
       Tier 2 Requirements (6/10 points):
-        - Required reviewers >=1
-        - For administrators: Last push review
-        - For administrators: Strict status checks (require branches to be up-to-date before merging)
+        - Require at least 1 reviewer for approval before merging (for administrators, this requirement weights twice than the others in this tier)
+        - For administrators: Require PRs prior to make any code changes
+        - For administrators: Require branch to be up to date before merging
+        - For administrators: Require approval of the most recent reviewable push
 
       Tier 3 Requirements (8/10 points):
-        - Status checks defined
+        - Require branch to pass at least 1 status check before merging
 
       Tier 4 Requirements (9/10 points):
-        - Required reviewers >= 2
+        - Require at least 2 reviewers for approval before merging
+        - Require review from code owners
 
       Tier 5 Requirements (10/10 points):
-        - For administrators: Dismiss stale reviews
-        - For administrators: Require CODEOWNER review
+        - For administrators: Dismiss stale reviews and approvals when new commits are pushed
+        - For administrators: Include administrator for review
+
+      GitLab Integration Status:
+        - GitLab associates releases with commits and not with the branch. Releases are ignored in this portion of the scoring.
 
     remediation:
       - >-
         Enable branch protection settings in your source hosting provider to
         avoid force pushes or deletion of your important branches.
       - >-
-        For GitHub, check out the steps [here](https://docs.github.com/en/github/administering-a-repository/managing-a-branch-protection-rule).
+        For GitHub, check out the steps for rulesets [here](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository) and rules [here](https://docs.github.com/en/github/administering-a-repository/managing-a-branch-protection-rule).
   CI-Tests:
     risk: Low
     tags: supply-chain, testing
-    repos: GitHub
+    repos: GitHub, GitLab
     short: Determines if the project runs tests before pull requests are merged.
     description: |
       Risk: `Low` (possible unknown vulnerabilities)
@@ -232,7 +242,7 @@ checks:
       The check works by looking for a set of CI-system names in GitHub `CheckRuns`
       and `Statuses` among the recent commits (~30). A CI-system is considered
       well-known if its name contains any of the following: appveyor, buildkite,
-      circleci, e2e, github-actions, jenkins, mergeable, test, travis-ci.
+      circleci, e2e, github-actions, jenkins, mergeable, test, travis-ci, woodpecker.
 
       Note: A project that fulfills this criterion with other tools may still receive
       a low score on this test. There are many ways to implement CI testing, and it is
@@ -255,51 +265,35 @@ checks:
     description: |
       Risk: `Low` (possibly not following security best practices)
 
-      This check determines whether the project has earned an [OpenSSF (formerly CII) Best Practices Badge](https://bestpractices.coreinfrastructure.org/),
-      which indicates that the project uses a set of security-focused best development practices for open
+      This check determines whether the project has earned an [OpenSSF (formerly CII) Best Practices Badge](https://www.bestpractices.dev/) at the passing, silver, or gold level.
+      The OpenSSF Best Practices badge indicates whether or not that the project uses a set of security-focused best development practices for open
       source software. The check uses the URL for the Git repo and the OpenSSF Best Practices badge API.
 
       The OpenSSF Best Practices badge has 3 tiers: passing, silver, and gold. We give
-      full credit to projects that meet the [gold criteria](https://bestpractices.coreinfrastructure.org/criteria/2), which is a
-      significant achievement for many projects. Lower scores represent a project that
-      is at least working to achieve a badge, with increasingly more points awarded as
-      more criteria are met.
+      full credit to projects that meet the [gold criteria](https://www.bestpractices.dev/criteria/2), which is a significant achievement for projects and requires multiple developers in the project.
+      Lower scores represent a project that has met the silver criteria, met the passing criteria, or is working to achieve the passing badge, with increasingly more points awarded as more criteria are met. Note that even meeting the passing criteria is a significant achievement.
 
-      - [gold badge](https://bestpractices.coreinfrastructure.org/en/criteria/2): 10
-      - [silver badge](https://bestpractices.coreinfrastructure.org/en/criteria/1): 7
-      - [passing badge](https://bestpractices.coreinfrastructure.org/en/criteria/0): 5
+      - [gold badge](https://www.bestpractices.dev/criteria/2): 10
+      - [silver badge](https://www.bestpractices.dev/criteria/1): 7
+      - [passing badge](https://www.bestpractices.dev/criteria/0): 5
       - in progress badge: 2
 
-      To earn the passing badge, the project MUST:
-
-        - publish the process for reporting vulnerabilities on the project site
-        - provide a working build system that can automatically rebuild the software
-          from source code (where applicable)
-        - have a general policy that tests will be added to an automated test suite
-          when major new functionality is added
-        - meet various cryptography criteria where applicable
-        - have at least one primary developer who knows how to design secure software
-        - have at least one primary developer who knows of common kinds of errors
-          that lead to vulnerabilities in this kind of software (and at least one
-          method to counter or mitigate each of them)
-        - apply at least one static code analysis tool (beyond compiler warnings and
-          "safe" language modes) to any proposed major production release.
-
       Some of these criteria overlap with other Scorecard checks.
+      However, note that in those overlapping cases, Scorecard can only report what it can automatically detect, while the OpenSSF Best Practices badge can report on claims and claim justifications from people (this counters false negatives and positives but has the challenge of requiring additional work from people).
     remediation:
       - >-
-        Sign up for the [OpenSSF Best Practices program](https://bestpractices.coreinfrastructure.org/).
+        Sign up for the [OpenSSF Best Practices program](https://www.bestpractices.dev/).
   Code-Review:
     risk: High
     tags: supply-chain, security, source-code, code-reviews
     repos: GitHub
-    short: Determines if the project requires code review before pull requests (aka merge requests) are merged.
+    short: Determines if the project requires human code review before pull requests (aka merge requests) are merged.
     description: |
       Risk: `High` (unintentional vulnerabilities or possible injection of malicious
       code)
 
-      This check determines whether the project requires code review before pull
-      requests (merge requests) are merged.
+      This check determines whether the project requires human code review
+      before pull requests (merge requests) are merged.
 
       Reviews detect various unintentional problems, including vulnerabilities that
       can be fixed immediately before they are merged, which improves the quality of
@@ -314,13 +308,22 @@ checks:
       performs a similar check for reviews using
       [Prow](https://github.com/kubernetes/test-infra/tree/master/prow#readme) (labels
       "lgtm" or "approved") and [Gerrit](https://www.gerritcodereview.com/) ("Reviewed-on" and "Reviewed-by").
-      If recent changes are solely bot activity (e.g. dependabot, renovatebot, or custom bots),
+      If recent changes are solely bot activity (e.g. Dependabot, Renovate bot, or custom bots),
       the check returns inconclusively.
 
       Scoring is leveled instead of proportional to make the check more predictable.
       If any bot-originated changes are unreviewed, 3 points are deducted. If any human
       changes are unreviewed, 7 points are deducted if a single change is unreviewed, and
       another 3 are deducted if multiple changes are unreviewed.
+
+      Review by bots, including bots powered by
+      artificial intelligence / machine learning (AI/ML),
+      do not count as code review.
+      Such reviews do not provide confidence that there will
+      be a second person who understands the
+      code change (e.g., if the originator suddenly becomes unavailable).
+      However, analysis by bots
+      may be able to meet (at least in part) the [SAST](#sast) criterion.
 
       Note: Requiring reviews for all changes is infeasible for some projects, such as
       those with only one active participant. Even a project with multiple active
@@ -374,7 +377,7 @@ checks:
       Note: Some projects cannot meet this requirement, such as small projects with
       only one active participant, or projects with a narrow scope that cannot attract
       the interest of multiple organizations. See
-      [Code Reviews](https://github.com/ossf/scorecard/blob/main/docs/checks.md#code-reviews)
+      [Code Reviews](https://github.com/ossf/scorecard/blob/main/docs/checks.md#code-review)
       for more information about evaluating projects with a small number of
       participants.
     remediation:
@@ -397,8 +400,10 @@ checks:
       1. if the repository name is included in the [OSS-Fuzz](https://github.com/google/oss-fuzz) project list;
       2. if [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/) is deployed in the repository;
       3. if there are user-defined language-specified fuzzing functions in the repository.
-         - currently only supports [Go fuzzing](https://go.dev/doc/fuzz/) and a limited set of property-based testing libraries for Haskell.
-      4. if it contains a [OneFuzz](https://github.com/microsoft/onefuzz) integration [detection file](https://github.com/microsoft/onefuzz/blob/main/docs/getting-started.md#detecting-the-use-of-onefuzz);
+         - currently only supports [Go fuzzing](https://go.dev/doc/fuzz/),
+         - a limited set of property-based testing libraries for Haskell including [QuickCheck](https://hackage.haskell.org/package/QuickCheck), [Hedgehog](https://hedgehog.qa/), [validity](https://hackage.haskell.org/package/validity) or [SmallCheck](https://hackage.haskell.org/package/smallcheck),
+         - a limited set of property-based testing libraries for JavaScript and TypeScript including [fast-check](https://fast-check.dev/).
+         - a limited set of property-based testing libraries for Erlang, including proper and quickcheck.
 
       Fuzzing, or fuzz testing, is the practice of feeding unexpected or random data
       into a program to expose bugs. Regular fuzzing is important to detect
@@ -518,7 +523,7 @@ checks:
         to obtain the hash of the manifest list like in this [example](https://github.com/ossf/scorecard/issues/1773#issuecomment-1076699039).
       - >-
         For GitHub workflows used in building and releasing your project, pin dependencies by hash. See [main.yaml](https://github.com/ossf/scorecard/blob/f55b86d6627cc3717e3a0395e03305e81b9a09be/.github/workflows/main.yml#L27) for example.
-        To determine the permissions needed for your workflows, you may use [StepSecurity's online tool](https://app.stepsecurity.io/) by ticking
+        To determine the permissions needed for your workflows, you may use [StepSecurity's online tool](https://app.stepsecurity.io/secureworkflow/) by ticking
         the "Pin actions to a full length commit SHA". You may also tick the "Restrict permissions for GITHUB_TOKEN" to fix issues found
         by the Token-Permissions check.
       - >-
@@ -540,7 +545,7 @@ checks:
       tools can prevent known classes of bugs from being inadvertently introduced in the
       codebase.
 
-      The checks currently looks for known Github apps such as
+      The checks currently looks for known GitHub apps such as
       [CodeQL](https://codeql.github.com/) (github-code-scanning) or
       [SonarCloud](https://sonarcloud.io/) in the recent (~30) merged PRs, or the use
       of "github/codeql-action" in a GitHub workflow. It also checks for the deprecated
@@ -554,6 +559,46 @@ checks:
       - >-
         Run CodeQL checks in your CI/CD by following the instructions
         [here](https://github.com/github/codeql-action#usage).
+
+  SBOM:
+    risk: Medium
+    short: Determines if the project maintains a Software Bill of Materials.
+    repos: GitHub, Gitlab
+    tags: supply-chain, security, vulnerabilities, dependencies, SBOM
+    description: |
+      Risk: `Medium` (possible inaccurate reporting of dependencies/vulnerabilities)
+
+      This check tries to determine if the project maintains a Software Bill of Materials (SBOM)
+      either as a file in the source or a release artifact. 
+
+      An SBOM can give users information about what dependencies your project has which
+      allows them to identify vulnerabilities in the software supply chain.
+
+      Standards to be used during checks;
+      - OSSF SBOM Everywhere SIG naming and directory conventions:
+        - <https://github.com/ossf/SBOM-everywhere/blob/main/reference/sbom_naming.md#consistent-naming-conventions>
+
+      This check currently looks for the existence of an SBOM in the
+      source of a project and as a pipeline or release artifact.
+
+      An SBOM Exists (one or more) (5/10 points):
+        - Any SBOM found counts for this test either in source. pipeline or release. 
+        - A SBOM stored with your source code is not ideal, but is a good first step.
+        \* It is recommended to publish with your release artifacts.
+
+      An SBOM is published as a release artifact (5/10 points):
+        - This is the preferred way to store an SBOM, and will be awarded full points.
+        - Checks release artifacts for an SBOM file matching established standards
+    remediation:
+      - >-
+        For Gitlab, see more information
+        [here](https://docs.gitlab.com/ee/user/application_security/dependency_scanning/index.html#cyclonedx-software-bill-of-materials).
+      - >-
+        For GitHub, see more information
+        [here](https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/about-supply-chain-security).
+      - >-
+        Alternatively, there are other tools available to generate [CycloneDX](https://cyclonedx.org/tool-center/) and [SPDX](https://spdx.dev/use/tools/) SBOMs.
+
   Security-Policy:
     risk: Medium
     short: Determines if the project has published a security policy.
@@ -587,7 +632,7 @@ checks:
       Security Policy Specific Text (1/10 points):
         - Specific text providing basic or general information about vulnerability
           and disclosure practices, expectations, and/or timelines
-        - Text should include a total of 2 or more hits which match (case insensitive)
+        - Text should include a total of 2 or more hits which match (case-insensitive)
           `vuln` and as in "Vulnerability" or "vulnerabilities";
           `disclos` as "Disclosure" or "disclose";
           and numbers which convey expectations of times, e.g., 30 days or 90 days
@@ -622,10 +667,12 @@ checks:
       This check looks for the following filenames in the project's last five
       [release assets](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases):
       [*.minisig](https://github.com/jedisct1/minisign), *.asc (pgp),
-      *.sig, *.sign, [*.intoto.jsonl](https://slsa.dev).
+      *.sig, *.sign, *.sigstore, [*.intoto.jsonl](https://slsa.dev).
 
       If a signature is found in the assets for each release, a score of 8 is given.
       If a [SLSA provenance file](https://slsa.dev/spec/v0.1/index) is found in the assets for each release (*.intoto.jsonl), the maximum score of 10 is given.
+
+      This check looks for the 30 most recent releases associated with an artifact. It ignores the source code-only releases that are created automatically by GitHub.
 
       Note: The check does not verify the signatures.
     remediation:
@@ -650,13 +697,13 @@ checks:
     description: |
       Risk: `High` (vulnerable to malicious code additions)
 
-      This check determines whether the project's automated workflows tokens are set
-      to read-only by default. It is currently limited to repositories hosted on
-      GitHub, and does not support other source hosting repositories (i.e., Forges).
+      This check determines whether the project's automated workflows tokens follow the
+      principle of least privilege. This is important because attackers may use a
+      compromised token with write access to, for example, push malicious code into the
+      project.
 
-      Setting token permissions to read-only follows the principle of least privilege.
-      This is important because attackers may use a compromised token with write
-      access to push malicious code into the project.
+      It is currently limited to repositories hosted on GitHub, and does not support
+      other source hosting repositories (i.e., Forges).
 
       The highest score is awarded when the permissions definitions in each workflow's
       yaml file are set as read-only at the
@@ -667,28 +714,32 @@ checks:
       This configuration is secure, but there is a chance that when a new job is added to the workflow, its job permissions could be
       left undefined because of human error.
 
+      Though a project's score won't be penalized, the check's details will include
+      warnings for more sensitive run-level permissions, listed below:
+
+      * `actions` - May allow an attacker to steal GitHub secrets by approving to run an action that needs approval.
+      * `checks` - May allow an attacker to remove pre-submit checks and introduce a bug.
+      * `contents` - Allows an attacker to commit unreviewed code. However, points are not reduced if the job utilizes a recognized packaging action or command.
+      * `deployments` - May allow an attacker to charge repo owner by triggering VM runs, and tiny chance an attacker can trigger a remote service with code they own if server accepts code/location variables unsanitized.
+      * `packages` - Allows an attacker to publish packages. However, points are not reduced if the job utilizes a recognized packaging action or command.
+      * `security-events` - May allow an attacker to read vulnerability reports before a patch is available. However, points are not reduced if the job utilizes a recognized action for uploading SARIF results.
+      * `statuses` - May allow an attacker to change the result of pre-submit checks and get a PR merged.
+
+      This compromise makes it clear the maintainer has done what's possible to use those permissions safety,
+      but allows users to identify that the permissions are used.
+
       The check cannot detect if the "read-only" GitHub permission setting is
       enabled, as there is no API available.
 
-      Additionally, points are reduced if certain write permissions are defined for a job.
-
-      ### Write permissions causing a small reduction
-      * `statuses` - May allow an attacker to change the result of pre-submit checks and get a PR merged.
-      * `checks` - May allow an attacker to remove pre-submit checks and introduce a bug.
-      * `security-events` - May allow an attacker to read vulnerability reports before a patch is available. However, points are not reduced if the job utilizes a recognized action for uploading SARIF results.
-      * `deployments` - May allow an attacker to charge repo owner by triggering VM runs, and tiny chance an attacker can trigger a remote service with code they own if server accepts code/location variables unsanitized.
-
-      ### Write permissions causing a large reduction
-      * `contents` - Allows an attacker to commit unreviewed code. However, points are not reduced if the job utilizes a recognized packaging action or command.
-      * `packages` - Allows an attacker to publish packages. However, points are not reduced if the job utilizes a recognized packaging action or command.
-      * `actions` - May allow an attacker to steal GitHub secrets by approving to run an action that needs approval.
-
     remediation:
       - >-
-        Set permissions as `read-all` or `contents: read` as described in
+        Set top-level permissions as `read-all` or `contents: read` as described in
         GitHub's [documentation](https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#permissions).
       - >-
-        To help determine the permissions needed for your workflows, you may use [StepSecurity's online tool](https://app.stepsecurity.io/) by ticking
+        Set any required write permissions at the job-level. Only set the permissions
+        required for that job; do not set `permissions: write-all` at the job level.
+      - >-
+        To help determine the permissions needed for your workflows, you may use [StepSecurity's online tool](https://app.stepsecurity.io/secureworkflow/) by ticking
         the "Restrict permissions for GITHUB_TOKEN". You may also tick the "Pin actions to a full length commit SHA" to fix issues found
         by the Pinned-dependencies check.
   Vulnerabilities:
@@ -782,10 +833,11 @@ checks:
       or `.md`. It will also detect these files in a directory named `LICENSES`.
       (Files in a `LICENSES` directory are typically named as their
       [SPDX](https://spdx.org/licenses/) license identifier followed by an
-      appropriate file extension, as described in the [REUSE](https://reuse.software/spec/) Specification.)
+      appropriate file extension, as described in the [REUSE Specification](https://reuse.software/spec/).)
 
       License Requirements:
-        - A detected `LICENSE`, `COPYRIGHT`, or `COPYING` filename (6/10 points)
+        - A detected `LICENSE`, `COPYRIGHT`, or `COPYING` filename, or license
+          files in a `LICENSES` directory (6/10 points)
         - The detected file is at the top-level directory (3/10 points)
         - A [FSF or OSI](https://spdx.org/licenses/) license is specified (1/10 points)
 
@@ -802,23 +854,23 @@ checks:
         in the filename. Examples include `LICENSE.md`, `Apache-2.0-LICENSE.md` or
         `LICENSE-Apache-2.0`.
       - >-
-        Alternately, create a `LICENSE` directory and add a license file(s) with a name
+        Alternately, create a `LICENSES` directory and add a license file(s) with a name
         that matches your [SPDX license identifier](https://spdx.org/licenses/).
         such as `LICENSES/Apache-2.0.txt`.
 
   Webhooks:
-    risk: High
+    risk: Critical
     tags: security, infrastructure
     repos: GitHub
-    short: This check validate if the webhook defined in the repository have a token configured.
+    short: This check validates if the webhook defined in the repository has a token configured.
     description: |
       Risk: `Critical` (service possibly accessible to third parties)
 
       This check determines whether the webhook defined in the repository has a token configured to authenticate the origins of requests.
     remediation:
-    - >-
-      Check whether your service supports token authentication.
-    - >-
-      If there is support for token authentication, set the secret in the webhook configuration. See [Setting up a webhook](https://docs.github.com/en/developers/webhooks-and-events/webhooks/creating-webhooks#setting-up-a-webhook)
-    - >-
-      If there is no support for token authentication, consider implementing it by following [these directions](https://docs.github.com/en/developers/webhooks-and-events/webhooks/securing-your-webhooks).
+      - >-
+        Check if the service your webhooks is configured with supports secrets.
+      - >-
+        If there is support for token authentication, set the secret in the webhook configuration. See [Setting up a webhook](https://docs.github.com/en/developers/webhooks-and-events/webhooks/creating-webhooks#setting-up-a-webhook).
+      - >-
+        If there is no support for token authentication, request the webhook service implement token authentication functionality by following [these directions](https://docs.github.com/en/developers/webhooks-and-events/webhooks/securing-your-webhooks).

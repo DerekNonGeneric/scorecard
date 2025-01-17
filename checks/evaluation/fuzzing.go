@@ -15,40 +15,46 @@
 package evaluation
 
 import (
-	"fmt"
-
-	"github.com/ossf/scorecard/v4/checker"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/fuzzed"
 )
 
 // Fuzzing applies the score policy for the Fuzzing check.
-func Fuzzing(name string, dl checker.DetailLogger,
-	r *checker.FuzzingData,
+func Fuzzing(name string,
+	findings []finding.Finding, dl checker.DetailLogger,
 ) checker.CheckResult {
-	if r == nil {
-		e := sce.WithMessage(sce.ErrScorecardInternal, "empty raw data")
+	expectedProbes := []string{
+		fuzzed.Probe,
+	}
+	// TODO: other packages to consider:
+	// - github.com/google/fuzztest
+
+	if !finding.UniqueProbesEqual(findings, expectedProbes) {
+		e := sce.WithMessage(sce.ErrScorecardInternal, "invalid probe results")
 		return checker.CreateRuntimeErrorResult(name, e)
 	}
 
-	if len(r.Fuzzers) == 0 {
-		return checker.CreateMinScoreResult(name, "project is not fuzzed")
-	}
-	fuzzers := []string{}
-	for i := range r.Fuzzers {
-		fuzzer := r.Fuzzers[i]
-		for _, f := range fuzzer.Files {
-			msg := checker.LogMessage{
-				Path:   f.Path,
-				Type:   f.Type,
-				Offset: f.Offset,
-			}
-			if f.Snippet != "" {
-				msg.Text = f.Snippet
-			}
-			dl.Info(&msg)
+	var fuzzerDetected bool
+	// Compute the score.
+	for i := range findings {
+		f := &findings[i]
+		var logLevel checker.DetailType
+		switch f.Outcome {
+		case finding.OutcomeFalse:
+			logLevel = checker.DetailWarn
+		case finding.OutcomeTrue:
+			fuzzerDetected = true
+			logLevel = checker.DetailInfo
+		default:
+			logLevel = checker.DetailDebug
 		}
-		fuzzers = append(fuzzers, fuzzer.Name)
+		checker.LogFinding(dl, f, logLevel)
 	}
-	return checker.CreateMaxScoreResult(name,
-		fmt.Sprintf("project is fuzzed with %v", fuzzers))
+
+	if fuzzerDetected {
+		return checker.CreateMaxScoreResult(name, "project is fuzzed")
+	}
+	return checker.CreateMinScoreResult(name, "project is not fuzzed")
 }

@@ -21,9 +21,9 @@ import (
 	"path"
 	"sync"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type licensesHandler struct {
@@ -31,11 +31,11 @@ type licensesHandler struct {
 	once     *sync.Once
 	ctx      context.Context
 	errSetup error
-	repourl  *repoURL
+	repourl  *Repo
 	licenses []clients.License
 }
 
-func (handler *licensesHandler) init(ctx context.Context, repourl *repoURL) {
+func (handler *licensesHandler) init(ctx context.Context, repourl *Repo) {
 	handler.ctx = ctx
 	handler.repourl = repourl
 	handler.errSetup = nil

@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ossf/scorecard/v4/docs/checks/internal"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/docs/checks/internal"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
 var errCheckNotExist = errors.New("check does not exist")
@@ -30,6 +30,8 @@ const docURL = "https://github.com/ossf/scorecard/blob/%s/docs/checks.md"
 
 // DocImpl implements `Doc` interface and
 // contains checks' documentation.
+//
+//nolint:recvcheck // Fixing would be a breaking change. Possible for V6?
 type DocImpl struct {
 	internaldoc internal.Doc
 }
@@ -50,7 +52,7 @@ func Read() (Doc, error) {
 func (d *DocImpl) GetCheck(name string) (CheckDoc, error) {
 	ic, exists := d.internaldoc.InternalChecks[name]
 	if !exists {
-		//nolint: wrapcheck
+		//nolint:wrapcheck
 		return nil, sce.CreateInternal(errCheckNotExist, "")
 	}
 	// Set the name and URL.
@@ -63,7 +65,7 @@ func (d *DocImpl) GetCheck(name string) (CheckDoc, error) {
 func (d *DocImpl) GetChecks() []CheckDoc {
 	var checks []CheckDoc
 	for k := range d.internaldoc.InternalChecks {
-		//nolint: errcheck
+		//nolint:errcheck
 		check, _ := d.GetCheck(k)
 		checks = append(checks, check)
 	}
@@ -77,7 +79,7 @@ func (d DocImpl) CheckExists(name string) bool {
 	return exists
 }
 
-// CheckDocImpl implementts `CheckDoc` interface and
+// CheckDocImpl implements `CheckDoc` interface and
 // stores documentation about a check.
 type CheckDocImpl struct {
 	internalCheck internal.Check

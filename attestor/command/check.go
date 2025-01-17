@@ -19,11 +19,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ossf/scorecard/v4/attestor/policy"
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks"
-	sclog "github.com/ossf/scorecard/v4/log"
-	"github.com/ossf/scorecard/v4/pkg"
+	"github.com/ossf/scorecard/v5/attestor/policy"
+	"github.com/ossf/scorecard/v5/checker"
+	sclog "github.com/ossf/scorecard/v5/log"
+	"github.com/ossf/scorecard/v5/pkg/scorecard"
 )
 
 type EmptyParameterError struct {
@@ -77,7 +76,7 @@ func RunCheckWithParams(repoURL, commitSHA, policyPath string) (policy.PolicyRes
 		}
 	}
 
-	repo, repoClient, ossFuzzRepoClient, ciiClient, vulnsClient, err := checker.GetClients(
+	repo, repoClient, ossFuzzRepoClient, ciiClient, vulnsClient, _, err := checker.GetClients(
 		ctx, repoURL, "", logger)
 	if err != nil {
 		return policy.Fail, fmt.Errorf("couldn't set up clients: %w", err)
@@ -85,41 +84,23 @@ func RunCheckWithParams(repoURL, commitSHA, policyPath string) (policy.PolicyRes
 
 	requiredChecks := attestationPolicy.GetRequiredChecksForPolicy()
 
-	enabledChecks := map[string]checker.Check{
-		checks.CheckBinaryArtifacts: {
-			Fn: checks.BinaryArtifacts,
-		},
-		checks.CheckVulnerabilities: {
-			Fn: checks.Vulnerabilities,
-		},
-		checks.CheckCodeReview: {
-			Fn: checks.CodeReview,
-		},
-		checks.CheckPinnedDependencies: {
-			Fn: checks.PinningDependencies,
-		},
-	}
-
-	// Filter out checks that won't be needed for policy-evaluation time
-	for name := range enabledChecks {
-		if _, isRequired := requiredChecks[name]; !isRequired {
-			delete(enabledChecks, name)
+	var enabledChecks []string
+	for check, required := range requiredChecks {
+		if required {
+			enabledChecks = append(enabledChecks, check)
 		}
 	}
 
-	repoResult, err := pkg.RunScorecard(
-		ctx,
-		repo,
-		commitSHA,
-		0,
-		enabledChecks,
-		repoClient,
-		ossFuzzRepoClient,
-		ciiClient,
-		vulnsClient,
+	repoResult, err := scorecard.Run(ctx, repo,
+		scorecard.WithCommitSHA(commitSHA),
+		scorecard.WithChecks(enabledChecks),
+		scorecard.WithRepoClient(repoClient),
+		scorecard.WithOSSFuzzClient(ossFuzzRepoClient),
+		scorecard.WithOpenSSFBestPraticesClient(ciiClient),
+		scorecard.WithVulnerabilitiesClient(vulnsClient),
 	)
 	if err != nil {
-		return policy.Fail, fmt.Errorf("RunScorecard: %w", err)
+		return policy.Fail, fmt.Errorf("scorecard.Run: %w", err)
 	}
 
 	result, err := attestationPolicy.EvaluateResults(&repoResult.RawResults)

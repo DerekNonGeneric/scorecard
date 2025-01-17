@@ -71,7 +71,7 @@ func setup(inputFile string) (tarballHandler, error) {
 	return tarballHandler, nil
 }
 
-// nolint: gocognit
+//nolint:gocognit
 func TestExtractTarball(t *testing.T) {
 	t.Parallel()
 	testcases := []struct {
@@ -153,12 +153,18 @@ func TestExtractTarball(t *testing.T) {
 
 			// Test GetFileContent API.
 			for _, getcontenttest := range testcase.getcontentTests {
-				content, err := handler.getFileContent(getcontenttest.filename)
+				f, err := handler.getFile(getcontenttest.filename)
 				if getcontenttest.err != nil && !errors.Is(err, getcontenttest.err) {
 					t.Errorf("test failed: expected - %v, got - %v", getcontenttest.err, err)
 				}
-				if getcontenttest.err == nil && !cmp.Equal(getcontenttest.output, content) {
-					t.Errorf("test failed: expected - %s, got - %s", string(getcontenttest.output), string(content))
+				if getcontenttest.err == nil {
+					content, err := io.ReadAll(f)
+					if err != nil {
+						t.Fatalf("unexpected error: %v", err)
+					}
+					if !cmp.Equal(getcontenttest.output, content) {
+						t.Errorf("test failed: expected - %s, got - %s", string(getcontenttest.output), string(content))
+					}
 				}
 			}
 

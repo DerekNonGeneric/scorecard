@@ -19,9 +19,9 @@ import (
 	"reflect"
 	"regexp"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/fileparser"
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/fileparser"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 const master = "master"
@@ -45,13 +45,14 @@ func (set *branchSet) add(branch *clients.BranchRef) bool {
 	return false
 }
 
-func (set branchSet) contains(branch string) bool {
+func (set *branchSet) contains(branch string) bool {
 	_, contains := set.exists[branch]
 	return contains
 }
 
 // BranchProtection retrieves the raw data for the Branch-Protection check.
-func BranchProtection(c clients.RepoClient) (checker.BranchProtectionsData, error) {
+func BranchProtection(cr *checker.CheckRequest) (checker.BranchProtectionsData, error) {
+	c := cr.RepoClient
 	branches := branchSet{
 		exists: make(map[string]bool),
 	}

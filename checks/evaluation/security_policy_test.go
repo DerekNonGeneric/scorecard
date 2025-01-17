@@ -17,81 +17,171 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/finding"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestSecurityPolicy(t *testing.T) {
 	t.Parallel()
-	//nolint
-	type args struct {
-		name string
-		r    *checker.SecurityPolicyData
-	}
-	//nolint
 	tests := []struct {
-		name string
-		args args
-		err  bool
-		want checker.CheckResult
+		name     string
+		findings []finding.Finding
+		result   scut.TestReturn
 	}{
 		{
-			name: "test_security_policy_1",
-			args: args{
-				name: "test_security_policy_1",
-			},
-			want: checker.CheckResult{
-				Score: -1,
-			},
-		},
-		{
-			name: "test_security_policy_2",
-			args: args{
-				name: "test_security_policy_2",
-				r:    &checker.SecurityPolicyData{},
-			},
-			want: checker.CheckResult{
-				Score: 0,
-			},
-		},
-		{
-			name: "test_security_policy_3",
-			args: args{
-				name: "test_security_policy_3",
-				r: &checker.SecurityPolicyData{
-					PolicyFiles: []checker.SecurityPolicyFile{
-						{
-							File: checker.File{
-								Path: "/etc/security/pam_env.conf",
-								Type: finding.FileTypeURL,
-							},
-							Information: make([]checker.SecurityPolicyInformation, 0),
-						},
-					},
+			name: "missing findings links",
+			findings: []finding.Finding{
+				{
+					Probe:   "securityPolicyContainsVulnerabilityDisclosure",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyContainsText",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyPresent",
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
-				Score: 0,
+			result: scut.TestReturn{
+				Score: checker.InconclusiveResultScore,
+				Error: sce.ErrScorecardInternal,
 			},
 		},
 		{
-			name: "test_security_policy_4",
-			args: args{
-				name: "test_security_policy_4",
-				r: &checker.SecurityPolicyData{
-					PolicyFiles: []checker.SecurityPolicyFile{
-						{
-							File: checker.File{
-								Path: "/etc/security/pam_env.conf",
-							},
-							Information: make([]checker.SecurityPolicyInformation, 0),
-						},
-					},
+			name: "invalid probe name",
+			findings: []finding.Finding{
+				{
+					Probe:   "securityPolicyContainsVulnerabilityDisclosure",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyContainsLinks",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyContainsText",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyPresent",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyInvalidProbeName",
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
-				Score: 0,
+			result: scut.TestReturn{
+				Score: checker.InconclusiveResultScore,
+				Error: sce.ErrScorecardInternal,
+			},
+		},
+		{
+			name: "file found only",
+			findings: []finding.Finding{
+				{
+					Probe:   "securityPolicyContainsVulnerabilityDisclosure",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyContainsLinks",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyContainsText",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyPresent",
+					Outcome: finding.OutcomeTrue,
+				},
+			},
+			result: scut.TestReturn{
+				Score:        checker.MinResultScore,
+				NumberOfInfo: 1,
+				NumberOfWarn: 3,
+			},
+		},
+		{
+			name: "file not found with true probes",
+			findings: []finding.Finding{
+				{
+					Probe:   "securityPolicyContainsVulnerabilityDisclosure",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyContainsLinks",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyContainsText",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyPresent",
+					Outcome: finding.OutcomeFalse,
+				},
+			},
+			result: scut.TestReturn{
+				Score:        checker.InconclusiveResultScore,
+				Error:        sce.ErrScorecardInternal,
+				NumberOfWarn: 1,
+				NumberOfInfo: 3,
+			},
+		},
+		{
+			name: "file found with no disclosure and text",
+			findings: []finding.Finding{
+				{
+					Probe:   "securityPolicyContainsVulnerabilityDisclosure",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyContainsLinks",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyContainsText",
+					Outcome: finding.OutcomeFalse,
+				},
+				{
+					Probe:   "securityPolicyPresent",
+					Outcome: finding.OutcomeTrue,
+				},
+			},
+			result: scut.TestReturn{
+				Score:        6,
+				NumberOfInfo: 2,
+				NumberOfWarn: 2,
+			},
+		},
+		{
+			name: "file found all true",
+			findings: []finding.Finding{
+				{
+					Probe:   "securityPolicyContainsVulnerabilityDisclosure",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyContainsLinks",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyContainsText",
+					Outcome: finding.OutcomeTrue,
+				},
+				{
+					Probe:   "securityPolicyPresent",
+					Outcome: finding.OutcomeTrue,
+				},
+			},
+			result: scut.TestReturn{
+				Score:        checker.MaxResultScore,
+				NumberOfInfo: 4,
 			},
 		},
 	}
@@ -100,17 +190,9 @@ func TestSecurityPolicy(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			x := checker.CheckRequest{Dlogger: &scut.TestDetailLogger{}}
-
-			got := SecurityPolicy(tt.args.name, x.Dlogger, tt.args.r)
-			if tt.err {
-				if got.Score != -1 {
-					t.Errorf("SecurityPolicy() = %v, want %v", got, tt.want)
-				}
-			}
-			if got.Score != tt.want.Score {
-				t.Errorf("SecurityPolicy() = %v, want %v for %v", got.Score, tt.want.Score, tt.name)
-			}
+			dl := scut.TestDetailLogger{}
+			got := SecurityPolicy(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
 	}
 }

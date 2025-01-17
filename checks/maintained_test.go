@@ -21,15 +21,15 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
-// ignoring the linter for cyclomatic complexity because it is a test func
 // TestMaintained tests the maintained check.
-//nolint
+//
+//nolint:gocognit // ignoring the linter for cyclomatic complexity because it is a test func
 func Test_Maintained(t *testing.T) {
 	t.Parallel()
 	threeHundredDaysAgo := time.Now().AddDate(0, 0, -300)
@@ -38,25 +38,23 @@ func Test_Maintained(t *testing.T) {
 	oneDayAgo := time.Now().AddDate(0, 0, -1)
 	ownerAssociation := clients.RepoAssociationOwner
 	noneAssociation := clients.RepoAssociationNone
-	// fieldalignment lint issue. Ignoring it as it is not important for this test.
 	someone := clients.User{
 		Login: "someone",
 	}
 	otheruser := clients.User{
 		Login: "someone-else",
 	}
-	//nolint
 	tests := []struct {
-		err        error
-		name       string
-		isarchived bool
-		archiveerr error
-		commits    []clients.Commit
-		commiterr  error
-		issues     []clients.Issue
-		issueerr   error
 		createdat  time.Time
+		err        error
+		archiveerr error
+		commiterr  error
+		issueerr   error
+		name       string
 		expected   checker.CheckResult
+		commits    []clients.Commit
+		issues     []clients.Issue
+		isarchived bool
 	}{
 		{
 			name:       "archived",
@@ -339,7 +337,7 @@ func Test_Maintained(t *testing.T) {
 				}
 				return tt.isarchived, nil
 			})
-
+			//nolint:nestif
 			if tt.archiveerr == nil {
 				mockRepo.EXPECT().ListCommits().DoAndReturn(
 					func() ([]clients.Commit, error) {

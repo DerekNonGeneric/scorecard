@@ -20,13 +20,12 @@ import (
 	"io"
 	_ "net/http/pprof" //nolint:gosec
 
-	docs "github.com/ossf/scorecard/v4/docs/checks"
-	sce "github.com/ossf/scorecard/v4/errors"
-	"github.com/ossf/scorecard/v4/log"
-	"github.com/ossf/scorecard/v4/pkg"
+	docs "github.com/ossf/scorecard/v5/docs/checks"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/log"
+	"github.com/ossf/scorecard/v5/pkg/scorecard"
 )
 
-//nolint
 type jsonCheckResult struct {
 	Name       string
 	Details    []string
@@ -47,7 +46,7 @@ type jsonCheckDocumentationV2 struct {
 	// Can be extended if needed.
 }
 
-//nolint
+//nolint:govet
 type jsonCheckResultV2 struct {
 	Details []string                 `json:"details"`
 	Score   int                      `json:"score"`
@@ -84,7 +83,7 @@ type jsonScorecardResultV2 struct {
 }
 
 // AsJSON exports results as JSON for new detail format.
-func AsJSON(r *pkg.ScorecardResult, showDetails bool, logLevel log.Level, writer io.Writer) error {
+func AsJSON(r *scorecard.Result, showDetails bool, logLevel log.Level, writer io.Writer) error {
 	encoder := json.NewEncoder(writer)
 
 	out := jsonScorecardResult{
@@ -100,7 +99,7 @@ func AsJSON(r *pkg.ScorecardResult, showDetails bool, logLevel log.Level, writer
 		if showDetails {
 			for i := range checkResult.Details {
 				d := checkResult.Details[i]
-				m := pkg.DetailToString(&d, logLevel)
+				m := scorecard.DetailToString(&d, logLevel)
 				if m == "" {
 					continue
 				}
@@ -109,6 +108,7 @@ func AsJSON(r *pkg.ScorecardResult, showDetails bool, logLevel log.Level, writer
 		}
 		out.Checks = append(out.Checks, tmpResult)
 	}
+	//nolint:musttag
 	if err := encoder.Encode(out); err != nil {
 		return sce.WithMessage(sce.ErrScorecardInternal, fmt.Sprintf("encoder.Encode: %v", err))
 	}
@@ -116,7 +116,7 @@ func AsJSON(r *pkg.ScorecardResult, showDetails bool, logLevel log.Level, writer
 }
 
 // AsJSON2 exports results as JSON for the cron job and in the new detail format.
-func AsJSON2(r *pkg.ScorecardResult, showDetails bool,
+func AsJSON2(r *scorecard.Result, showDetails bool,
 	logLevel log.Level, checkDocs docs.Doc, writer io.Writer,
 ) error {
 	score, err := r.GetAggregateScore(checkDocs)
@@ -159,7 +159,7 @@ func AsJSON2(r *pkg.ScorecardResult, showDetails bool,
 		if showDetails {
 			for i := range checkResult.Details {
 				d := checkResult.Details[i]
-				m := pkg.DetailToString(&d, logLevel)
+				m := scorecard.DetailToString(&d, logLevel)
 				if m == "" {
 					continue
 				}

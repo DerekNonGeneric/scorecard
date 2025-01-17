@@ -35,10 +35,6 @@ KO := $(TOOLS_BIN_DIR)/ko
 $(KO): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); GOBIN=$(TOOLS_BIN_DIR) go install github.com/google/ko
 
-STUNNING_TRIBBLE := $(TOOLS_BIN_DIR)/stunning-tribble
-$(STUNNING_TRIBBLE): $(TOOLS_DIR)/go.mod
-	cd $(TOOLS_DIR); GOBIN=$(TOOLS_BIN_DIR) go install github.com/naveensrinivasan/stunning-tribble
-
 MOCKGEN := $(TOOLS_BIN_DIR)/mockgen
 $(MOCKGEN): $(TOOLS_DIR)/go.mod
 	cd $(TOOLS_DIR); GOBIN=$(TOOLS_BIN_DIR) go install github.com/golang/mock/mockgen
@@ -49,7 +45,7 @@ $(GINKGO): $(TOOLS_DIR)/go.mod
 
 GORELEASER := $(TOOLS_BIN_DIR)/goreleaser
 $(GORELEASER): $(TOOLS_DIR)/go.mod
-	cd $(TOOLS_DIR); GOBIN=$(TOOLS_BIN_DIR) go install github.com/goreleaser/goreleaser
+	cd $(TOOLS_DIR); GOBIN=$(TOOLS_BIN_DIR) go install github.com/goreleaser/goreleaser/v2
 
 PROTOC_GEN_GO := $(TOOLS_BIN_DIR)/protoc-gen-go
 $(PROTOC_GEN_GO): $(TOOLS_DIR)/go.mod
@@ -73,7 +69,6 @@ $(PROTOC):
 install: ## Installs required binaries.
 install: $(GOLANGCI_LINT) \
 	$(KO) \
-	$(STUNNING_TRIBBLE) \
 	$(PROTOC_GEN_GO) $(PROTOC) \
 	$(MOCKGEN) \
 	$(GINKGO) \
@@ -99,19 +94,29 @@ check-linter: | $(GOLANGCI_LINT)
 	# Run golangci-lint linter
 	$(GOLANGCI_LINT) run -c .golangci.yml
 
-add-projects: ## Adds new projects to ./cron/internal/data/projects.csv
+fix-linter: ## Install and run golang linter, with fixes
+fix-linter: | $(GOLANGCI_LINT)
+	# Run golangci-lint linter
+	$(GOLANGCI_LINT) run -c .golangci.yml --fix
+
+add-projects: ## Adds new projects to ./cron/internal/data/projects.csv and ./cron/internal/data/gitlab-projects.csv
 add-projects: ./cron/internal/data/projects.csv | build-add-script
-	# Add new projects to ./cron/internal/data/projects.csv
+	# GitHub
 	./cron/internal/data/add/add ./cron/internal/data/projects.csv ./cron/internal/data/projects.new.csv
 	mv ./cron/internal/data/projects.new.csv ./cron/internal/data/projects.csv
+	# GitLab
+	./cron/internal/data/add/add ./cron/internal/data/gitlab-projects.csv ./cron/internal/data/gitlab-projects.new.csv
+	mv ./cron/internal/data/gitlab-projects.new.csv ./cron/internal/data/gitlab-projects.csv
 
 validate-projects: ## Validates ./cron/internal/data/projects.csv
 validate-projects: ./cron/internal/data/projects.csv | build-validate-script
 	# Validate ./cron/internal/data/projects.csv
 	./cron/internal/data/validate/validate ./cron/internal/data/projects.csv
+	./cron/internal/data/validate/validate ./cron/internal/data/gitlab-projects.csv
+	./cron/internal/data/validate/validate ./cron/internal/data/gitlab-projects-releasetest.csv
 
 tree-status: | all-targets-update-dependencies ## Verify tree is clean and all changes are committed
-	# Verify the tree is clean and all changes are commited
+	# Verify the tree is clean and all changes are committed
 	./scripts/tree-status
 
 ###############################################################################
@@ -120,7 +125,7 @@ tree-status: | all-targets-update-dependencies ## Verify tree is clean and all c
 ## Build all cron-related targets
 build-cron: build-controller build-worker build-cii-worker \
 	build-shuffler build-bq-transfer build-github-server \
-	build-webhook build-add-script build-validate-script build-update-script
+	build-webhook build-add-script build-validate-script
 
 build-targets = generate-mocks generate-docs build-scorecard build-cron build-proto build-attestor
 .PHONY: build $(build-targets)
@@ -139,7 +144,8 @@ generate-mocks: clients/mockclients/repo_client.go \
 	clients/mockclients/repo.go \
 	clients/mockclients/cii_client.go \
 	checks/mockclients/vulnerabilities.go \
-	cmd/packagemanager_mockclient.go
+	cmd/internal/packagemanager/packagemanager_mockclient.go \
+	cmd/internal/nuget/nuget_mockclient.go
 clients/mockclients/repo_client.go: clients/repo_client.go | $(MOCKGEN)
 	# Generating MockRepoClient
 	$(MOCKGEN) -source=clients/repo_client.go -destination=clients/mockclients/repo_client.go -package=mockrepo -copyright_file=clients/mockclients/license.txt
@@ -152,19 +158,28 @@ clients/mockclients/cii_client.go: clients/cii_client.go | $(MOCKGEN)
 checks/mockclients/vulnerabilities.go: clients/vulnerabilities.go | $(MOCKGEN)
 	# Generating MockCIIClient
 	$(MOCKGEN) -source=clients/vulnerabilities.go -destination=clients/mockclients/vulnerabilities.go -package=mockrepo -copyright_file=clients/mockclients/license.txt
-cmd/packagemanager_mockclient.go: cmd/packagemanager_client.go | $(MOCKGEN)
+cmd/internal/packagemanager/packagemanager_mockclient.go: cmd/internal/packagemanager/client.go | $(MOCKGEN)
 	# Generating MockPackageManagerClient
-	$(MOCKGEN) -source=cmd/packagemanager_client.go -destination=cmd/packagemanager_mockclient.go -package=cmd -copyright_file=clients/mockclients/license.txt
+	$(MOCKGEN) -source=cmd/internal/packagemanager/client.go -destination=cmd/internal/packagemanager/packagemanager_mockclient.go -package=packagemanager -copyright_file=clients/mockclients/license.txt
+cmd/internal/nuget/nuget_mockclient.go: cmd/internal/nuget/client.go | $(MOCKGEN)
+	# Generating MockNugetClient
+	$(MOCKGEN) -source=cmd/internal/nuget/client.go -destination=cmd/internal/nuget/nuget_mockclient.go -package=nuget -copyright_file=clients/mockclients/license.txt
 
+PROBE_DEFINITION_FILES = $(shell find ./probes/ -name "def.yml")
 generate-docs: ## Generates docs
-generate-docs: validate-docs docs/checks.md
-docs/checks.md: docs/checks/internal/checks.yaml docs/checks/internal/*.go docs/checks/internal/generate/*.go
+generate-docs: validate-docs docs/checks.md docs/checks/internal/checks.yaml docs/checks/internal/*.go docs/checks/internal/generate/*.go \
+		docs/probes.md $(PROBE_DEFINITION_FILES) docs/probes/internal/generate/*.go
 	# Generating checks.md
 	go run ./docs/checks/internal/generate/main.go docs/checks.md
+	# Generating probes.md
+	go run ./docs/probes/internal/generate/main.go probes/ > docs/probes.md
 
 validate-docs: docs/checks/internal/generate/main.go
 	# Validating checks.yaml
 	go run ./docs/checks/internal/validate/main.go
+
+setup-probe:
+	go run ./probes/internal/scripts/setup.go $(probeName)
 
 SCORECARD_DEPS = $(shell find . -iname "*.go" | grep -v tools/)
 build-scorecard: ## Build Scorecard CLI
@@ -185,7 +200,7 @@ scorecard.releaser: .goreleaser.yml $(SCORECARD_DEPS) | $(GORELEASER)
 	# Run go releaser on the Scorecard repo
 	$(GORELEASER) check && \
 		VERSION_LDFLAGS="$(LDFLAGS)" $(GORELEASER) release \
-		--snapshot --rm-dist --skip-publish --skip-sign && \
+		--snapshot --clean --skip=publish,sign && \
 		touch scorecard.releaser
 
 CRON_CONTROLLER_DEPS = $(shell find cron/internal/ -iname "*.go")
@@ -247,7 +262,7 @@ build-attestor-docker: ## Build scorecard-attestor Docker image
 build-attestor-docker:
 	DOCKER_BUILDKIT=1 docker build . --file attestor/Dockerfile \
 		--tag scorecard-attestor:latest \
-		--tag scorecard-atttestor:$(GIT_HASH)
+		--tag scorecard-attestor:$(GIT_HASH)
 
 TOKEN_SERVER_DEPS = $(shell find clients/githubrepo/roundtripper/tokens/ -iname "*.go")
 build-github-server: ## Build GitHub token server
@@ -291,12 +306,6 @@ cron/internal/data/validate/validate: cron/internal/data/validate/*.go cron/data
 	# Run go build on the validate script
 	cd cron/internal/data/validate && CGO_ENABLED=0 go build -trimpath -a -ldflags '$(LDFLAGS)' -o validate
 
-build-update-script: ## Runs go build on the update script
-build-update-script: cron/internal/data/update/projects-update
-cron/internal/data/update/projects-update:  cron/internal/data/update/*.go cron/data/*.go
-	# Run go build on the update script
-	cd cron/internal/data/update && CGO_ENABLED=0 go build -trimpath -a -tags netgo -ldflags '$(LDFLAGS)'  -o projects-update
-
 docker-targets = scorecard-docker cron-controller-docker cron-worker-docker cron-cii-worker-docker cron-bq-transfer-docker cron-webhook-docker cron-github-server-docker
 .PHONY: dockerbuild $(docker-targets)
 dockerbuild: $(docker-targets)
@@ -329,23 +338,32 @@ ifndef GITLAB_AUTH_TOKEN
 	$(error GITLAB_AUTH_TOKEN is undefined)
 endif
 
+check-env-azure-devops:
+ifndef AZURE_DEVOPS_AUTH_TOKEN
+	$(error AZURE_DEVOPS_AUTH_TOKEN is undefined)
+endif
+
 e2e-pat: ## Runs e2e tests. Requires GITHUB_AUTH_TOKEN env var to be set to GitHub personal access token
 e2e-pat: build-scorecard check-env | $(GINKGO)
 	# Run e2e tests. GITHUB_AUTH_TOKEN with personal access token must be exported to run this
-	TOKEN_TYPE="PAT" $(GINKGO) --race -p -v -cover -coverprofile=e2e-coverage.out --keep-separate-coverprofiles ./...
+	TOKEN_TYPE="PAT" $(GINKGO) --race -p -v  -coverprofile=e2e-coverage.out -coverpkg=./... -r ./... 
 
 e2e-gh-token: ## Runs e2e tests. Requires GITHUB_AUTH_TOKEN env var to be set to default GITHUB_TOKEN
 e2e-gh-token: build-scorecard check-env | $(GINKGO)
 	# Run e2e tests. GITHUB_AUTH_TOKEN set to secrets.GITHUB_TOKEN must be used to run this.
-	TOKEN_TYPE="GITHUB_TOKEN" $(GINKGO) --race -p -v -cover -coverprofile=e2e-coverage.out --keep-separate-coverprofiles ./...
+	GITLAB_AUTH_TOKEN="" TOKEN_TYPE="GITHUB_TOKEN" $(GINKGO) --race -p -v -coverprofile=e2e-coverage.out --keep-separate-coverprofiles ./...
 
 e2e-gitlab-token: ## Runs e2e tests that require a GITLAB_TOKEN
 e2e-gitlab-token: build-scorecard check-env-gitlab | $(GINKGO)
-	TEST_GITLAB_EXTERNAL=1 TOKEN_TYPE="GITLAB_PAT" $(GINKGO) --race -p -vv --focus '.*GitLab' ./...
+	TEST_GITLAB_EXTERNAL=1 TOKEN_TYPE="GITLAB_PAT" $(GINKGO) --race -p -vv -coverprofile=e2e-coverage.out --keep-separate-coverprofiles --focus '.*GitLab' ./...
 
 e2e-gitlab: ## Runs e2e tests for GitLab only. TOKEN_TYPE is not used (since these are public APIs), but must be set to something
 e2e-gitlab: build-scorecard | $(GINKGO)
-	TEST_GITLAB_EXTERNAL=1 TOKEN_TYPE="PAT" $(GINKGO) --race -p -vv --focus ".*GitLab" ./...
+	TEST_GITLAB_EXTERNAL=1 TOKEN_TYPE="PAT" $(GINKGO)  --race -p -vv -coverprofile=e2e-coverage.out --keep-separate-coverprofiles --focus ".*GitLab" ./...
+
+e2e-azure-devops-token: ## Runs e2e tests that require a AZURE_DEVOPS_AUTH_TOKEN
+e2e-azure-devops-token: build-scorecard check-env-azure-devops | $(GINKGO)
+	TEST_AZURE_DEVOPS_EXTERNAL=1 $(GINKGO) --race -p -vv -coverprofile=e2e-coverage.out --keep-separate-coverprofiles --focus "Azure DevOps" ./...
 
 e2e-attestor: ## Runs e2e tests for scorecard-attestor
 	cd attestor/e2e; go test -covermode=atomic -coverprofile=e2e-coverage.out; cd ../..
@@ -372,7 +390,7 @@ scorecard-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM) \
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4
+			   github.com/ossf/scorecard/v5
 
 cron-controller-ko: | $(KO) $(KOCACHE_PATH)
 	KO_DATA_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -384,7 +402,7 @@ cron-controller-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM) \
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4/cron/internal/controller
+			   github.com/ossf/scorecard/v5/cron/internal/controller
 
 cron-worker-ko: | $(KO) $(KOCACHE_PATH)
 	KO_DATA_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -396,7 +414,7 @@ cron-worker-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM) \
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4/cron/internal/worker
+			   github.com/ossf/scorecard/v5/cron/internal/worker
 
 cron-cii-worker-ko: | $(KO) $(KOCACHE_PATH)
 	KO_DATA_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -408,7 +426,7 @@ cron-cii-worker-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM)\
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4/cron/internal/cii
+			   github.com/ossf/scorecard/v5/cron/internal/cii
 
 cron-bq-transfer-ko: | $(KO) $(KOCACHE_PATH)
 	KO_DATA_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -420,7 +438,7 @@ cron-bq-transfer-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM) \
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4/cron/internal/bq
+			   github.com/ossf/scorecard/v5/cron/internal/bq
 
 cron-webhook-ko: | $(KO) $(KOCACHE_PATH)
 	KO_DATA_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -432,7 +450,7 @@ cron-webhook-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM) \
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4/cron/internal/webhook
+			   github.com/ossf/scorecard/v5/cron/internal/webhook
 
 cron-github-server-ko: | $(KO) $(KOCACHE_PATH)
 	KO_DATA_DATE_EPOCH=$(SOURCE_DATE_EPOCH) \
@@ -444,6 +462,6 @@ cron-github-server-ko: | $(KO) $(KOCACHE_PATH)
 			   --sbom=none \
 			   --platform=$(PLATFORM) \
 			   --tags latest,$(GIT_VERSION),$(GIT_HASH) \
-			   github.com/ossf/scorecard/v4/clients/githubrepo/roundtripper/tokens/server
+			   github.com/ossf/scorecard/v5/clients/githubrepo/roundtripper/tokens/server
 
 ###############################################################################

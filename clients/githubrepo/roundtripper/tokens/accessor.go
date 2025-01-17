@@ -16,12 +16,16 @@
 package tokens
 
 import (
+	"log"
 	"os"
 	"strings"
 )
 
 // githubAuthServer is the RPC URL for the token server.
 const githubAuthServer = "GITHUB_AUTH_SERVER"
+
+// env variables from which GitHub auth tokens are read, in order of precedence.
+var githubAuthTokenEnvVars = []string{"GITHUB_AUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN", "GH_AUTH_TOKEN"}
 
 // TokenAccessor interface defines a `retrieve-once` data structure.
 // Implementations of this interface must be thread-safe.
@@ -30,14 +34,33 @@ type TokenAccessor interface {
 	Release(uint64)
 }
 
+var logDuplicateTokenWarning = func(firstName string, clashingName string) {
+	var stringBuilder strings.Builder
+	stringBuilder.WriteString("Warning: PATs stored in env variables ")
+	stringBuilder.WriteString(firstName)
+	stringBuilder.WriteString(" and ")
+	stringBuilder.WriteString(clashingName)
+	stringBuilder.WriteString(" differ. Scorecard will use the former.")
+	log.Println(stringBuilder.String())
+}
+
 func readGitHubTokens() (string, bool) {
-	githubAuthTokens := []string{"GITHUB_AUTH_TOKEN", "GITHUB_TOKEN", "GH_TOKEN", "GH_AUTH_TOKEN"}
-	for _, name := range githubAuthTokens {
+	var firstName, firstToken string
+	for _, name := range githubAuthTokenEnvVars {
 		if token, exists := os.LookupEnv(name); exists && token != "" {
-			return token, exists
+			if firstName == "" {
+				firstName = name
+				firstToken = token
+			} else if token != firstToken {
+				logDuplicateTokenWarning(firstName, name)
+			}
 		}
 	}
-	return "", false
+	if firstName == "" {
+		return "", false
+	} else {
+		return firstToken, true
+	}
 }
 
 // MakeTokenAccessor is a factory function of TokenAccessor.
@@ -45,7 +68,7 @@ func MakeTokenAccessor() TokenAccessor {
 	if value, exists := readGitHubTokens(); exists {
 		return makeRoundRobinAccessor(strings.Split(value, ","))
 	}
-	if value, exists := os.LookupEnv(githubAuthServer); exists {
+	if value, exists := os.LookupEnv(githubAuthServer); exists && value != "" {
 		return makeRPCAccessor(value)
 	}
 	return nil

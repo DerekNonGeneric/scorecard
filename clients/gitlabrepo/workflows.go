@@ -18,30 +18,35 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type workflowsHandler struct {
 	glClient *gitlab.Client
-	repourl  *repoURL
+	repourl  *Repo
 }
 
-func (handler *workflowsHandler) init(repourl *repoURL) {
+func (handler *workflowsHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 }
 
 func (handler *workflowsHandler) listSuccessfulWorkflowRuns(filename string) ([]clients.WorkflowRun, error) {
 	var buildStates []gitlab.BuildStateValue
 	buildStates = append(buildStates, gitlab.Success)
-	jobs, _, err := handler.glClient.Jobs.ListProjectJobs(handler.repourl.project,
+	jobs, _, err := handler.glClient.Jobs.ListProjectJobs(handler.repourl.projectID,
 		&gitlab.ListJobsOptions{Scope: &buildStates})
 	if err != nil {
 		return nil, fmt.Errorf("error getting project jobs: %w", err)
 	}
 
 	return workflowsRunsFrom(jobs, filename), nil
+}
+
+// avoid memory aliasing by returning a new copy.
+func strptr(s string) *string {
+	return &s
 }
 
 func workflowsRunsFrom(data []*gitlab.Job, filename string) []clients.WorkflowRun {
@@ -51,7 +56,7 @@ func workflowsRunsFrom(data []*gitlab.Job, filename string) []clients.WorkflowRu
 		for _, artifact := range job.Artifacts {
 			if strings.EqualFold(artifact.Filename, filename) {
 				workflowRuns = append(workflowRuns, clients.WorkflowRun{
-					HeadSHA: &job.Pipeline.Sha,
+					HeadSHA: strptr(job.Pipeline.Sha),
 					URL:     job.WebURL,
 				})
 				continue

@@ -17,62 +17,58 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/hasOSVVulnerabilities"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 // TestVulnerabilities tests the vulnerabilities checker.
 func TestVulnerabilities(t *testing.T) {
 	t.Parallel()
-	//nolint
-	type args struct {
-		name string
-		r    *checker.VulnerabilitiesData
-	}
+	//nolint:govet
 	tests := []struct {
 		name     string
-		args     args
-		want     checker.CheckResult
+		findings []finding.Finding
+		result   scut.TestReturn
 		expected []struct {
 			lineNumber uint
 		}
 	}{
 		{
 			name: "no vulnerabilities",
-			args: args{
-				name: "vulnerabilities_test.go",
-				r: &checker.VulnerabilitiesData{
-					Vulnerabilities: []clients.Vulnerability{},
+			findings: []finding.Finding{
+				{
+					Probe:   "hasOSVVulnerabilities",
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
+			result: scut.TestReturn{
 				Score: 10,
 			},
 		},
 		{
-			name: "one vulnerability",
-			args: args{
-				name: "vulnerabilities_test.go",
-				r: &checker.VulnerabilitiesData{
-					Vulnerabilities: []clients.Vulnerability{
-						{
-							ID: "CVE-2019-1234",
-						},
-					},
-				},
-			},
-			want: checker.CheckResult{
-				Score: 9,
+			name:     "three vulnerabilities",
+			findings: vulnFindings(t, 3),
+			result: scut.TestReturn{
+				Score:        7,
+				NumberOfWarn: 3,
 			},
 		},
 		{
-			name: "one vulnerability",
-			args: args{
-				name: "vulnerabilities_test.go",
+			name:     "twelve vulnerabilities to check that score is not less than 0",
+			findings: vulnFindings(t, 12),
+			result: scut.TestReturn{
+				Score:        0,
+				NumberOfWarn: 12,
 			},
-			want: checker.CheckResult{
+		},
+		{
+			name:     "invalid findings",
+			findings: []finding.Finding{},
+			result: scut.TestReturn{
 				Score: -1,
+				Error: sce.ErrScorecardInternal,
 			},
 		},
 	}
@@ -81,10 +77,21 @@ func TestVulnerabilities(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			dl := scut.TestDetailLogger{}
-			res := Vulnerabilities(tt.args.name, &dl, tt.args.r)
-			if res.Score != tt.want.Score {
-				t.Errorf("Vulnerabilities() = %v, want %v", res.Score, tt.want.Score)
-			}
+			got := Vulnerabilities(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
 	}
+}
+
+// helper to generate repeated vuln findings.
+func vulnFindings(t *testing.T, n int) []finding.Finding {
+	t.Helper()
+	findings := make([]finding.Finding, n)
+	for i := range findings {
+		findings[i] = finding.Finding{
+			Probe:   hasOSVVulnerabilities.Probe,
+			Outcome: finding.OutcomeTrue,
+		}
+	}
+	return findings
 }

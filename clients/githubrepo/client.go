@@ -19,16 +19,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 	"github.com/shurcooL/githubv4"
 
-	"github.com/ossf/scorecard/v4/clients"
-	"github.com/ossf/scorecard/v4/clients/githubrepo/roundtripper"
-	sce "github.com/ossf/scorecard/v4/errors"
-	"github.com/ossf/scorecard/v4/log"
+	"github.com/ossf/scorecard/v5/clients"
+	"github.com/ossf/scorecard/v5/clients/githubrepo/roundtripper"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/log"
 )
 
 var (
@@ -39,7 +42,7 @@ var (
 
 // Client is GitHub-specific implementation of RepoClient.
 type Client struct {
-	repourl       *repoURL
+	repourl       *Repo
 	repo          *github.Repository
 	repoClient    *github.Client
 	graphClient   *graphqlHandler
@@ -59,9 +62,11 @@ type Client struct {
 	commitDepth   int
 }
 
+const defaultGhHost = "github.com"
+
 // InitRepo sets up the GitHub repo in local storage for improving performance and GitHub token usage efficiency.
 func (client *Client) InitRepo(inputRepo clients.Repo, commitSHA string, commitDepth int) error {
-	ghRepo, ok := inputRepo.(*repoURL)
+	ghRepo, ok := inputRepo.(*Repo)
 	if !ok {
 		return fmt.Errorf("%w: %v", errInputRepoType, inputRepo)
 	}
@@ -76,7 +81,7 @@ func (client *Client) InitRepo(inputRepo clients.Repo, commitSHA string, commitD
 	}
 	client.commitDepth = commitDepth
 	client.repo = repo
-	client.repourl = &repoURL{
+	client.repourl = &Repo{
 		owner:         repo.Owner.GetLogin(),
 		repo:          repo.GetName(),
 		defaultBranch: repo.GetDefaultBranch(),
@@ -121,12 +126,17 @@ func (client *Client) InitRepo(inputRepo clients.Repo, commitSHA string, commitD
 
 	// Setup licensesHandler.
 	client.licenses.init(client.ctx, client.repourl)
+
 	return nil
 }
 
 // URI implements RepoClient.URI.
 func (client *Client) URI() string {
-	return fmt.Sprintf("github.com/%s/%s", client.repourl.owner, client.repourl.repo)
+	host, isHost := os.LookupEnv("GH_HOST")
+	if !isHost {
+		host = defaultGhHost
+	}
+	return fmt.Sprintf("%s/%s/%s", host, client.repourl.owner, client.repourl.repo)
 }
 
 // LocalPath implements RepoClient.LocalPath.
@@ -139,9 +149,9 @@ func (client *Client) ListFiles(predicate func(string) (bool, error)) ([]string,
 	return client.tarball.listFiles(predicate)
 }
 
-// GetFileContent implements RepoClient.GetFileContent.
-func (client *Client) GetFileContent(filename string) ([]byte, error) {
-	return client.tarball.getFileContent(filename)
+// GetFileReader implements RepoClient.GetFileReader.
+func (client *Client) GetFileReader(filename string) (io.ReadCloser, error) {
+	return client.tarball.getFile(filename)
 }
 
 // ListCommits implements RepoClient.ListCommits.
@@ -200,8 +210,7 @@ func (client *Client) GetOrgRepoClient(ctx context.Context) (clients.RepoClient,
 		return nil, fmt.Errorf("error during MakeGithubRepo: %w", err)
 	}
 
-	logger := log.NewLogger(log.InfoLevel)
-	c := CreateGithubRepoClient(ctx, logger)
+	c := CreateGithubRepoClientWithTransport(ctx, client.repoClient.Client().Transport)
 	if err := c.InitRepo(dotGithubRepo, clients.HeadSHA, 0); err != nil {
 		return nil, fmt.Errorf("error during InitRepo: %w", err)
 	}
@@ -259,8 +268,26 @@ func CreateGithubRepoClientWithTransport(ctx context.Context, rt http.RoundTripp
 	httpClient := &http.Client{
 		Transport: rt,
 	}
-	client := github.NewClient(httpClient)
-	graphClient := githubv4.NewClient(httpClient)
+
+	var client *github.Client
+	var graphClient *githubv4.Client
+	githubHost, isGhHost := os.LookupEnv("GH_HOST")
+
+	if isGhHost && githubHost != defaultGhHost {
+		githubRestURL := fmt.Sprintf("https://%s/api/v3", strings.TrimSpace(githubHost))
+		githubGraphqlURL := fmt.Sprintf("https://%s/api/graphql", strings.TrimSpace(githubHost))
+
+		var err error
+		client, err = github.NewEnterpriseClient(githubRestURL, githubRestURL, httpClient)
+		if err != nil {
+			panic(fmt.Errorf("error during CreateGithubRepoClientWithTransport:EnterpriseClient: %w", err))
+		}
+
+		graphClient = githubv4.NewEnterpriseClient(githubGraphqlURL, httpClient)
+	} else {
+		client = github.NewClient(httpClient)
+		graphClient = githubv4.NewClient(httpClient)
+	}
 
 	return &Client{
 		ctx:        ctx,
@@ -317,7 +344,7 @@ func CreateGithubRepoClient(ctx context.Context, logger *log.Logger) clients.Rep
 }
 
 // CreateOssFuzzRepoClient returns a RepoClient implementation
-// intialized to `google/oss-fuzz` GitHub repository.
+// initialized to `google/oss-fuzz` GitHub repository.
 //
 // Deprecated: Searching the github.com/google/oss-fuzz repo for projects is flawed. Use a constructor
 // from clients/ossfuzz instead. https://github.com/ossf/scorecard/issues/2670

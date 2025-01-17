@@ -18,20 +18,20 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type webhookHandler struct {
 	glClient *gitlab.Client
 	once     *sync.Once
 	errSetup error
-	repourl  *repoURL
+	repourl  *Repo
 	webhooks []clients.Webhook
 }
 
-func (handler *webhookHandler) init(repourl *repoURL) {
+func (handler *webhookHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 	handler.errSetup = nil
 	handler.once = new(sync.Once)
@@ -40,7 +40,7 @@ func (handler *webhookHandler) init(repourl *repoURL) {
 func (handler *webhookHandler) setup() error {
 	handler.once.Do(func() {
 		projectHooks, _, err := handler.glClient.Projects.ListProjectHooks(
-			handler.repourl.project, &gitlab.ListProjectHooksOptions{})
+			handler.repourl.projectID, &gitlab.ListProjectHooksOptions{})
 		if err != nil {
 			handler.errSetup = fmt.Errorf("request for project hooks failed with %w", err)
 			return

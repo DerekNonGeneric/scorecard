@@ -16,12 +16,9 @@
 package options
 
 import (
-	"os"
 	"testing"
 )
 
-// Cannot run parallel tests because of the ENV variables.
-//nolint
 func TestOptions_Validate(t *testing.T) {
 	type fields struct {
 		Repo              string
@@ -32,6 +29,7 @@ func TestOptions_Validate(t *testing.T) {
 		NPM               string
 		PyPI              string
 		RubyGems          string
+		Nuget             string
 		PolicyFile        string
 		ResultsFile       string
 		ChecksToRun       []string
@@ -99,6 +97,7 @@ func TestOptions_Validate(t *testing.T) {
 				NPM:               tt.fields.NPM,
 				PyPI:              tt.fields.PyPI,
 				RubyGems:          tt.fields.RubyGems,
+				Nuget:             tt.fields.Nuget,
 				PolicyFile:        tt.fields.PolicyFile,
 				ResultsFile:       tt.fields.ResultsFile,
 				ChecksToRun:       tt.fields.ChecksToRun,
@@ -108,8 +107,7 @@ func TestOptions_Validate(t *testing.T) {
 				EnableScorecardV6: tt.fields.EnableScorecardV6,
 			}
 			if o.EnableSarif {
-				os.Setenv(EnvVarEnableSarif, "1")
-				defer os.Unsetenv(EnvVarEnableSarif)
+				t.Setenv(EnvVarEnableSarif, "1")
 			}
 
 			if err := o.Validate(); (err != nil) != tt.wantErr {

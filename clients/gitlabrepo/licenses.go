@@ -14,57 +14,65 @@
 
 package gitlabrepo
 
-// TODO:
-// add "github.com/xanzy/go-gitlab" to this list.
-
 import (
+	"errors"
 	"fmt"
+	"regexp"
 	"sync"
 
-	"github.com/ossf/scorecard/v4/clients"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
+
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type licensesHandler struct {
-	// TODO: glClient *gitlab.Client
-	once     *sync.Once
-	errSetup error
-	repourl  *repoURL
-	licenses []clients.License
+	glProject *gitlab.Project
+	once      *sync.Once
+	errSetup  error
+	repourl   *Repo
+	licenses  []clients.License
 }
 
-func (handler *licensesHandler) init(repourl *repoURL) {
+func (handler *licensesHandler) init(repourl *Repo, project *gitlab.Project) {
 	handler.repourl = repourl
+	handler.glProject = project
 	handler.errSetup = nil
 	handler.once = new(sync.Once)
 }
 
+var errLicenseURLParse = errors.New("couldn't parse gitlab repo license url")
+
 func (handler *licensesHandler) setup() error {
 	handler.once.Do(func() {
-		// TODO: find actual GitLab API, data type, and fields
-		// client := handler.glClient
-		// licenseMap, _, err := client.Projects.GetLicense(handler.repourl.projectID)
-		licenseMap := []clients.License{}
-		// TODO: err := (*struct{})(nil)
-		if len(licenseMap) == 0 {
-			// TODO: handler.errSetup = fmt.Errorf("request for repo licenses failed with %w", err)
-			handler.errSetup = fmt.Errorf("%w: ListLicenses not yet supported for gitlab", clients.ErrUnsupportedFeature)
+		l := handler.glProject.License
+
+		// No registered license on GitLab repo, use file-based license detection instead
+		if l == nil {
 			return
 		}
 
-		// TODO: find actual GitLab API, data type, and fields
-		// TODO: for k, v := range *licenseMap {
-		//		handler.licenses = append(handler.licenses,
-		//			clients.License{
-		//				Key:    "",
-		//				Name:   "",
-		//				Path:   "",
-		//				Size:   0,
-		//				SPDXId: "",
-		//				Type:   "",
-		//			},
-		//		)
-		//	}
-		//
+		ptn, err := regexp.Compile(fmt.Sprintf("%s/-/blob/(?:\\w+)/(.*)", handler.repourl.URI()))
+		if err != nil {
+			handler.errSetup = fmt.Errorf("couldn't parse license url: %w", err)
+			return
+		}
+
+		m := ptn.FindStringSubmatch(handler.glProject.LicenseURL)
+		if len(m) < 2 {
+			handler.errSetup = fmt.Errorf("%w: %s", errLicenseURLParse, handler.glProject.LicenseURL)
+			return
+		}
+		path := m[1]
+
+		handler.licenses = append(handler.licenses,
+			clients.License{
+				Key:    l.Key,
+				Name:   l.Name,
+				Path:   path,
+				SPDXId: l.Key,
+			},
+		)
+
 		handler.errSetup = nil
 	})
 

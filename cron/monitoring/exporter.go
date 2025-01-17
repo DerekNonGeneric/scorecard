@@ -16,7 +16,6 @@
 package monitoring
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
@@ -24,10 +23,16 @@ import (
 	"contrib.go.opencensus.io/exporter/stackdriver/monitoredresource/gcp"
 	"go.opencensus.io/stats/view"
 
-	"github.com/ossf/scorecard/v4/cron/config"
+	"github.com/ossf/scorecard/v5/cron/config"
 )
 
-var errorUndefinedExporter = errors.New("unsupported exporterType")
+type unsupportedExporterError struct {
+	exporter string
+}
+
+func (u unsupportedExporterError) Error() string {
+	return "unsupported exporterType: " + u.exporter
+}
 
 type exporterType string
 
@@ -59,7 +64,7 @@ func GetExporter() (Exporter, error) {
 	case printer:
 		return new(printerExporter), nil
 	default:
-		return nil, fmt.Errorf("%w: %s", errorUndefinedExporter, exporter)
+		return nil, unsupportedExporterError{exporter: exporter}
 	}
 }
 

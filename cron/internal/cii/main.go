@@ -21,15 +21,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
-	"github.com/ossf/scorecard/v4/clients"
-	"github.com/ossf/scorecard/v4/cron/config"
-	"github.com/ossf/scorecard/v4/cron/data"
+	"github.com/ossf/scorecard/v5/clients"
+	"github.com/ossf/scorecard/v5/cron/config"
+	"github.com/ossf/scorecard/v5/cron/data"
 )
 
-const ciiBaseURL = "https://bestpractices.coreinfrastructure.org/projects.json"
+const ciiBaseURL = "https://www.bestpractices.dev/projects.json"
 
 type ciiPageResp struct {
 	RepoURL    string `json:"repo_url"`
@@ -40,13 +42,16 @@ func writeToCIIDataBucket(ctx context.Context, pageResp []ciiPageResp, bucketURL
 	for _, project := range pageResp {
 		projectURL := strings.TrimPrefix(project.RepoURL, "https://")
 		projectURL = strings.TrimPrefix(projectURL, "http://")
+		if projectURL == "" {
+			continue
+		}
 		jsonData, err := clients.BadgeResponse{
 			BadgeLevel: project.BadgeLevel,
 		}.AsJSON()
 		if err != nil {
 			return fmt.Errorf("error during AsJSON: %w", err)
 		}
-		fmt.Printf("Writing result for: %s\n", projectURL)
+		log.Printf("Writing result for: %s\n", projectURL)
 		if err := data.WriteToBlobStore(ctx, bucketURL,
 			fmt.Sprintf("%s/result.json", projectURL), jsonData); err != nil {
 			return fmt.Errorf("error during data.WriteToBlobStore: %w", err)
@@ -82,7 +87,7 @@ func getPage(ctx context.Context, pageNum int) ([]ciiPageResp, error) {
 
 func main() {
 	ctx := context.Background()
-	fmt.Println("Starting...")
+	log.Println("Starting...")
 
 	flag.Parse()
 	if err := config.ReadConfig(); err != nil {
@@ -94,9 +99,13 @@ func main() {
 		panic(err)
 	}
 
+	throttle := time.NewTicker(time.Second) // bestpractices.dev wants 1 QPS
+	defer throttle.Stop()
+
 	pageNum := 1
 	pageResp, err := getPage(ctx, pageNum)
 	for err == nil && len(pageResp) > 0 {
+		<-throttle.C
 		if err := writeToCIIDataBucket(ctx, pageResp, ciiDataBucket); err != nil {
 			panic(err)
 		}
@@ -107,5 +116,5 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("Job completed")
+	log.Println("Job completed")
 }

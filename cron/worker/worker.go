@@ -20,10 +20,10 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/ossf/scorecard/v4/cron/config"
-	"github.com/ossf/scorecard/v4/cron/data"
-	"github.com/ossf/scorecard/v4/cron/internal/pubsub"
-	"github.com/ossf/scorecard/v4/log"
+	"github.com/ossf/scorecard/v5/cron/config"
+	"github.com/ossf/scorecard/v5/cron/data"
+	"github.com/ossf/scorecard/v5/cron/internal/pubsub"
+	"github.com/ossf/scorecard/v5/log"
 )
 
 // Worker is the interface used to process batch requests.
@@ -74,7 +74,7 @@ func (wl *WorkLoop) Run() error {
 		return fmt.Errorf("config.GetResultDataBucketURL: %w", err)
 	}
 
-	logger := log.NewLogger(log.InfoLevel)
+	logger := log.NewCronLogger(log.InfoLevel)
 
 	for {
 		req, err := subscriber.SynchronousPull()

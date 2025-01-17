@@ -21,15 +21,15 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestVulnerabilities(t *testing.T) {
 	t.Parallel()
-	//nolint
+	//nolint:govet
 	tests := []struct {
 		name            string
 		want            checker.VulnerabilitiesData
@@ -47,9 +47,8 @@ func TestVulnerabilities(t *testing.T) {
 			numberofCommits: 1,
 		},
 		{
-			name:    "err response",
-			wantErr: true,
-			//nolint
+			name:          "err response",
+			wantErr:       true,
 			err:           errors.New("error"),
 			vulnsResponse: clients.VulnerabilitiesResponse{},
 		},
@@ -93,7 +92,6 @@ func TestVulnerabilities(t *testing.T) {
 			mockVulnClient.EXPECT().ListUnfixedVulnerabilities(context.TODO(), gomock.Any(), gomock.Any()).DoAndReturn(
 				func(ctx context.Context, commit string, localPath string) (clients.VulnerabilitiesResponse, error) {
 					if tt.vulnsError {
-						//nolint
 						return clients.VulnerabilitiesResponse{}, errors.New("error")
 					}
 					return tt.vulnsResponse, tt.err
@@ -116,9 +114,7 @@ func TestVulnerabilities(t *testing.T) {
 				}
 			}
 
-			if !scut.ValidateTestReturn(t, tt.name, &tt.expected, &checker.CheckResult{}, &dl) {
-				t.Fatalf("Test %s failed", tt.name)
-			}
+			scut.ValidateTestReturn(t, tt.name, &tt.expected, &checker.CheckResult{}, &dl)
 		})
 	}
 }

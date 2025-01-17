@@ -16,11 +16,15 @@ package evaluation
 
 import (
 	"fmt"
-	"time"
+	"strconv"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/archived"
+	"github.com/ossf/scorecard/v5/probes/createdRecently"
+	"github.com/ossf/scorecard/v5/probes/hasRecentCommits"
+	"github.com/ossf/scorecard/v5/probes/issueActivityByProjectMember"
 )
 
 const (
@@ -30,70 +34,67 @@ const (
 )
 
 // Maintained applies the score policy for the Maintained check.
-func Maintained(name string, dl checker.DetailLogger, r *checker.MaintainedData) checker.CheckResult {
-	if r == nil {
-		e := sce.WithMessage(sce.ErrScorecardInternal, "empty raw data")
+func Maintained(name string,
+	findings []finding.Finding, dl checker.DetailLogger,
+) checker.CheckResult {
+	// We have 4 unique probes, each should have a finding.
+	expectedProbes := []string{
+		archived.Probe,
+		issueActivityByProjectMember.Probe,
+		hasRecentCommits.Probe,
+		createdRecently.Probe,
+	}
+
+	if !finding.UniqueProbesEqual(findings, expectedProbes) {
+		e := sce.WithMessage(sce.ErrScorecardInternal, "invalid probe results")
 		return checker.CreateRuntimeErrorResult(name, e)
 	}
 
-	if r.ArchivedStatus.Status {
-		return checker.CreateMinScoreResult(name, "repo is marked as archived")
-	}
+	var isArchived, recentlyCreated bool
 
-	// If not explicitly marked archived, look for activity in past `lookBackDays`.
-	threshold := time.Now().AddDate(0 /*years*/, 0 /*months*/, -1*lookBackDays /*days*/)
-	commitsWithinThreshold := 0
-	for i := range r.DefaultBranchCommits {
-		if r.DefaultBranchCommits[i].CommittedDate.After(threshold) {
-			commitsWithinThreshold++
+	var commitsWithinThreshold, numberOfIssuesUpdatedWithinThreshold int
+	var err error
+	for i := range findings {
+		f := &findings[i]
+		switch f.Outcome {
+		case finding.OutcomeTrue:
+			switch f.Probe {
+			case issueActivityByProjectMember.Probe:
+				numberOfIssuesUpdatedWithinThreshold, err = strconv.Atoi(f.Values[issueActivityByProjectMember.NumIssuesKey])
+				if err != nil {
+					return checker.CreateRuntimeErrorResult(name, sce.WithMessage(sce.ErrScorecardInternal, err.Error()))
+				}
+			case hasRecentCommits.Probe:
+				commitsWithinThreshold, err = strconv.Atoi(f.Values[hasRecentCommits.NumCommitsKey])
+				if err != nil {
+					return checker.CreateRuntimeErrorResult(name, sce.WithMessage(sce.ErrScorecardInternal, err.Error()))
+				}
+			case archived.Probe:
+				isArchived = true
+				checker.LogFinding(dl, f, checker.DetailWarn)
+			case createdRecently.Probe:
+				recentlyCreated = true
+				checker.LogFinding(dl, f, checker.DetailWarn)
+			}
+		case finding.OutcomeFalse:
+			// both archive and created recently are good if false, and the
+			// other probes are informational and dont need logged. But we need
+			// to specify the case so it doesn't get logged below at the debug level
+		default:
+			checker.LogFinding(dl, f, checker.DetailDebug)
 		}
 	}
 
-	// Emit a warning if this repo was created recently
-	recencyThreshold := time.Now().AddDate(0 /*years*/, 0 /*months*/, -1*lookBackDays /*days*/)
-	if r.CreatedAt.After(recencyThreshold) {
-		dl.Warn(&checker.LogMessage{
-			Text: fmt.Sprintf("repo was created in the last %d days (Created at: %s), please review its contents carefully",
-				lookBackDays, r.CreatedAt.Format(time.RFC3339)),
-		})
-		daysSinceRepoCreated := int(time.Since(r.CreatedAt).Hours() / 24)
-		return checker.CreateMinScoreResult(name,
-			fmt.Sprintf("repo was created %d days ago, not enough maintenance history", daysSinceRepoCreated),
-		)
+	if isArchived {
+		return checker.CreateMinScoreResult(name, "project is archived")
 	}
 
-	issuesUpdatedWithinThreshold := 0
-	for i := range r.Issues {
-		if hasActivityByCollaboratorOrHigher(&r.Issues[i], threshold) {
-			issuesUpdatedWithinThreshold++
-		}
+	if recentlyCreated {
+		return checker.CreateMinScoreResult(name, "project was created in last 90 days. please review its contents carefully")
 	}
 
 	return checker.CreateProportionalScoreResult(name, fmt.Sprintf(
-		"%d commit(s) out of %d and %d issue activity out of %d found in the last %d days",
-		commitsWithinThreshold, len(r.DefaultBranchCommits), issuesUpdatedWithinThreshold, len(r.Issues), lookBackDays),
-		commitsWithinThreshold+issuesUpdatedWithinThreshold, activityPerWeek*lookBackDays/daysInOneWeek)
-}
-
-// hasActivityByCollaboratorOrHigher returns true if the issue was created or commented on by an
-// owner/collaborator/member since the threshold.
-func hasActivityByCollaboratorOrHigher(issue *clients.Issue, threshold time.Time) bool {
-	if issue == nil {
-		return false
-	}
-
-	if issue.AuthorAssociation.Gte(clients.RepoAssociationCollaborator) &&
-		issue.CreatedAt != nil && issue.CreatedAt.After(threshold) {
-		// The creator of the issue is a collaborator or higher.
-		return true
-	}
-	for _, comment := range issue.Comments {
-		if comment.AuthorAssociation.Gte(clients.RepoAssociationCollaborator) &&
-			comment.CreatedAt != nil &&
-			comment.CreatedAt.After(threshold) {
-			// The author of the comment is a collaborator or higher.
-			return true
-		}
-	}
-	return false
+		"%d commit(s) and %d issue activity found in the last %d days",
+		commitsWithinThreshold, numberOfIssuesUpdatedWithinThreshold, lookBackDays),
+		commitsWithinThreshold+numberOfIssuesUpdatedWithinThreshold, activityPerWeek*lookBackDays/daysInOneWeek)
 }

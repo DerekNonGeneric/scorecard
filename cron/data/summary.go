@@ -22,7 +22,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/ossf/scorecard/v4/cron/config"
+	"github.com/ossf/scorecard/v5/cron/config"
 )
 
 // ShardSummary is a summary of information about a set of shards with the same
@@ -126,7 +126,7 @@ func GetBucketSummary(ctx context.Context, bucketURL string) (*BucketSummary, er
 			summary.getOrCreate(creationTime).shardsExpected = int(metadata.GetNumShard())
 			summary.getOrCreate(creationTime).shardMetadata = keyData
 		default:
-			//nolint: goerr113
+			//nolint:goerr113
 			return nil, fmt.Errorf("found unrecognized file: %s", key)
 		}
 	}

@@ -18,17 +18,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type searchCommitsHandler struct {
 	glClient *gitlab.Client
-	repourl  *repoURL
+	repourl  *Repo
 }
 
-func (handler *searchCommitsHandler) init(repourl *repoURL) {
+func (handler *searchCommitsHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 }
 
@@ -38,17 +38,17 @@ func (handler *searchCommitsHandler) search(request clients.SearchCommitsOptions
 	}
 	query, err := handler.buildQuery(request)
 	if err != nil {
-		return nil, fmt.Errorf("handler.buildQuiery: %w", err)
+		return nil, fmt.Errorf("handler.buildQuery: %w", err)
 	}
 
-	commits, _, err := handler.glClient.Search.CommitsByProject(handler.repourl.project, query, &gitlab.SearchOptions{})
+	commits, _, err := handler.glClient.Search.CommitsByProject(handler.repourl.projectID, query, &gitlab.SearchOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("Search.Commits: %w", err)
 	}
 
 	// Gitlab returns a list of commits that does not contain the committer's id, unlike in
 	// githubrepo/searchCommits.go so to limit the number of requests we are mapping each unique user
-	// email to thei gitlab user data.
+	// email to their gitlab user data.
 	userMap := make(map[string]*gitlab.User)
 	var ret []clients.Commit
 	for _, commit := range commits {
@@ -75,7 +75,7 @@ func (handler *searchCommitsHandler) buildQuery(request clients.SearchCommitsOpt
 	var queryBuilder strings.Builder
 	if _, err := queryBuilder.WriteString(
 		fmt.Sprintf("project:%s/%s author:%s",
-			handler.repourl.owner, handler.repourl.project,
+			handler.repourl.owner, handler.repourl.projectID,
 			request.Author)); err != nil {
 		return "", fmt.Errorf("writestring: %w", err)
 	}
