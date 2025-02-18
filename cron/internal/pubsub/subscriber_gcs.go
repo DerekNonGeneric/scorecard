@@ -24,7 +24,7 @@ import (
 	pubsub "cloud.google.com/go/pubsub/apiv1"
 	"cloud.google.com/go/pubsub/apiv1/pubsubpb"
 
-	"github.com/ossf/scorecard/v4/cron/data"
+	"github.com/ossf/scorecard/v5/cron/data"
 )
 
 const (
@@ -90,10 +90,10 @@ func (subscriber *gcsSubscriber) SynchronousPull() (*data.ScorecardBatchRequest,
 			MaxMessages:  maxMessagesToPull,
 		})
 		if err != nil {
-			log.Printf("error during Recieive: %v", err)
+			log.Printf("error during Receive: %v", err)
 			return nil, nil
 		}
-		numReceivedMessages = len(result.ReceivedMessages)
+		numReceivedMessages = len(result.GetReceivedMessages())
 		if numReceivedMessages > 0 {
 			msgToProcess = result.GetReceivedMessages()[0]
 		} else {
@@ -107,7 +107,7 @@ func (subscriber *gcsSubscriber) SynchronousPull() (*data.ScorecardBatchRequest,
 		log.Fatalf("expected to receive max %d messages, got %d", maxMessagesToPull, numReceivedMessages)
 	}
 
-	subscriber.recvdAckID = msgToProcess.AckId
+	subscriber.recvdAckID = msgToProcess.GetAckId()
 	// Continuously notify the server that processing is still happening on this message.
 	go subscriber.extendAckDeadline()
 

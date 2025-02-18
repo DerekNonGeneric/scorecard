@@ -18,7 +18,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 func TestSearchCommitsBuildQuery(t *testing.T) {
@@ -27,15 +27,15 @@ func TestSearchCommitsBuildQuery(t *testing.T) {
 		searchReq       clients.SearchCommitsOptions
 		expectedErrType error
 		name            string
-		repourl         *repoURL
+		repourl         *Repo
 		expectedQuery   string
 		hasError        bool
 	}{
 		{
 			name: "Basic",
-			repourl: &repoURL{
-				owner:   "testowner",
-				project: "1234",
+			repourl: &Repo{
+				owner:     "testowner",
+				projectID: "1234",
 			},
 			searchReq: clients.SearchCommitsOptions{
 				Author: "testAuthor",
@@ -44,9 +44,9 @@ func TestSearchCommitsBuildQuery(t *testing.T) {
 		},
 		{
 			name: "EmptyQuery:",
-			repourl: &repoURL{
-				owner:   "testowner",
-				project: "1234",
+			repourl: &Repo{
+				owner:     "testowner",
+				projectID: "1234",
 			},
 			searchReq:       clients.SearchCommitsOptions{},
 			hasError:        true,

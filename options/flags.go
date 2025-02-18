@@ -20,7 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ossf/scorecard/v4/checks"
+	"github.com/ossf/scorecard/v5/checks"
 )
 
 const (
@@ -45,11 +45,20 @@ const (
 	// FlagRubyGems is the flag name for specifying a RubyGems repository.
 	FlagRubyGems = "rubygems"
 
+	// FlagNuget is the flag name for specifying a Nuget repository.
+	FlagNuget = "nuget"
+
 	// FlagMetadata is the flag name for specifying metadata for the project.
 	FlagMetadata = "metadata"
 
 	// FlagShowDetails is the flag name for outputting additional check info.
 	FlagShowDetails = "show-details"
+
+	// Flag FlagFileMode is the flag name for specifying how files are fetched for a repository.
+	FlagFileMode = "file-mode"
+
+	// FlagShowAnnotations is the flag name for outputting annotations on checks.
+	FlagShowAnnotations = "show-annotations"
 
 	// FlagChecks is the flag name for specifying which checks to run.
 	FlagChecks = "checks"
@@ -60,7 +69,15 @@ const (
 	// FlagFormat is the flag name for specifying output format.
 	FlagFormat = "format"
 
+	// FlagResultsFile is the flag name for specifying output file.
+	FlagResultsFile = "output"
+
+	// ShorthandFlagResultsFile is the shorthand flag name for specifying output file.
+	ShorthandFlagResultsFile = "o"
+
 	FlagCommitDepth = "commit-depth"
+
+	FlagProbes = "probes"
 )
 
 // Command is an interface for handling options for command-line utilities.
@@ -96,7 +113,7 @@ func (o *Options) AddFlags(cmd *cobra.Command) {
 		&o.LogLevel,
 		FlagLogLevel,
 		o.LogLevel,
-		"set the log level",
+		"Set the log level. Possible values are: 'info', 'debug', 'warn'. Add --show-details to see the results.",
 	)
 
 	cmd.Flags().StringVar(
@@ -120,6 +137,13 @@ func (o *Options) AddFlags(cmd *cobra.Command) {
 		"rubygems package to check, given that the rubygems package has a GitHub repository",
 	)
 
+	cmd.Flags().StringVar(
+		&o.Nuget,
+		FlagNuget,
+		o.Nuget,
+		"nuget package to check, given that the nuget package has a GitHub repository",
+	)
+
 	cmd.Flags().StringSliceVar(
 		&o.Metadata,
 		FlagMetadata,
@@ -132,6 +156,13 @@ func (o *Options) AddFlags(cmd *cobra.Command) {
 		FlagShowDetails,
 		o.ShowDetails,
 		"show extra details about each check",
+	)
+
+	cmd.Flags().BoolVar(
+		&o.ShowAnnotations,
+		FlagShowAnnotations,
+		o.ShowAnnotations,
+		"show maintainers annotations for checks",
 	)
 
 	cmd.Flags().IntVar(
@@ -152,10 +183,18 @@ func (o *Options) AddFlags(cmd *cobra.Command) {
 		fmt.Sprintf("Checks to run. Possible values are: %s", strings.Join(checkNames, ",")),
 	)
 
+	cmd.Flags().StringSliceVar(
+		&o.ProbesToRun,
+		FlagProbes,
+		o.ProbesToRun,
+		"Probes to run.",
+	)
+
 	// TODO(options): Extract logic
 	allowedFormats := []string{
 		FormatDefault,
 		FormatJSON,
+		FormatProbe,
 	}
 
 	if o.isSarifEnabled() {
@@ -177,5 +216,21 @@ func (o *Options) AddFlags(cmd *cobra.Command) {
 			"output format. Possible values are: %s",
 			strings.Join(allowedFormats, ", "),
 		),
+	)
+
+	cmd.Flags().StringVarP(
+		&o.ResultsFile,
+		FlagResultsFile,
+		ShorthandFlagResultsFile,
+		o.ResultsFile,
+		"output file",
+	)
+
+	allowedModes := []string{FileModeArchive, FileModeGit}
+	cmd.Flags().StringVar(
+		&o.FileMode,
+		FlagFileMode,
+		o.FileMode,
+		fmt.Sprintf("mode to fetch repository files: %s", strings.Join(allowedModes, ", ")),
 	)
 }

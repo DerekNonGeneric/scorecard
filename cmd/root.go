@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package cmd implements Scorecard commandline.
+// Package cmd implements Scorecard command-line.
 package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -25,20 +26,25 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/release-utils/version"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	docs "github.com/ossf/scorecard/v4/docs/checks"
-	sce "github.com/ossf/scorecard/v4/errors"
-	sclog "github.com/ossf/scorecard/v4/log"
-	"github.com/ossf/scorecard/v4/options"
-	"github.com/ossf/scorecard/v4/pkg"
-	"github.com/ossf/scorecard/v4/policy"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	"github.com/ossf/scorecard/v5/clients/azuredevopsrepo"
+	"github.com/ossf/scorecard/v5/clients/githubrepo"
+	"github.com/ossf/scorecard/v5/clients/gitlabrepo"
+	"github.com/ossf/scorecard/v5/clients/localdir"
+	pmc "github.com/ossf/scorecard/v5/cmd/internal/packagemanager"
+	docs "github.com/ossf/scorecard/v5/docs/checks"
+	sce "github.com/ossf/scorecard/v5/errors"
+	sclog "github.com/ossf/scorecard/v5/log"
+	"github.com/ossf/scorecard/v5/options"
+	"github.com/ossf/scorecard/v5/pkg/scorecard"
+	"github.com/ossf/scorecard/v5/policy"
 )
 
 const (
 	scorecardLong = "A program that shows the OpenSSF scorecard for an open source software."
-	scorecardUse  = `./scorecard (--repo=<repo> | --local=<folder> | --{npm,pypi,rubygems}=<package_name>)
-	 [--checks=check1,...] [--show-details]`
+	scorecardUse  = `./scorecard (--repo=<repo> | --local=<folder> | --{npm,pypi,rubygems,nuget}=<package_name>)
+	 [--checks=check1,...] [--show-details] [--show-annotations]`
 	scorecardShort = "OpenSSF Scorecard"
 )
 
@@ -72,9 +78,12 @@ func New(o *options.Options) *cobra.Command {
 
 // rootCmd runs scorecard checks given a set of arguments.
 func rootCmd(o *options.Options) error {
-	p := &packageManager{}
+	var err error
+	var repoResult scorecard.Result
+
+	p := &pmc.PackageManagerClient{}
 	// Set `repo` from package managers.
-	pkgResp, err := fetchGitRepositoryFromPackageManagers(o.NPM, o.PyPI, o.RubyGems, p)
+	pkgResp, err := fetchGitRepositoryFromPackageManagers(o.NPM, o.PyPI, o.RubyGems, o.Nuget, p)
 	if err != nil {
 		return fmt.Errorf("fetchGitRepositoryFromPackageManagers: %w", err)
 	}
@@ -88,16 +97,18 @@ func rootCmd(o *options.Options) error {
 	}
 
 	ctx := context.Background()
-	logger := sclog.NewLogger(sclog.ParseLevel(o.LogLevel))
-	repoURI, repoClient, ossFuzzRepoClient, ciiClient, vulnsClient, err := checker.GetClients(
-		ctx, o.Repo, o.Local, logger) // MODIFIED
-	if err != nil {
-		return fmt.Errorf("GetClients: %w", err)
-	}
 
-	defer repoClient.Close()
-	if ossFuzzRepoClient != nil {
-		defer ossFuzzRepoClient.Close()
+	var repo clients.Repo
+	if o.Local != "" {
+		repo, err = localdir.MakeLocalDirRepo(o.Local)
+		if err != nil {
+			return fmt.Errorf("making local dir: %w", err)
+		}
+	} else {
+		repo, err = makeRepo(o.Repo)
+		if err != nil {
+			return fmt.Errorf("making remote repo: %w", err)
+		}
 	}
 
 	// Read docs.
@@ -107,36 +118,49 @@ func rootCmd(o *options.Options) error {
 	}
 
 	var requiredRequestTypes []checker.RequestType
+	// if local option not set add file based
 	if o.Local != "" {
 		requiredRequestTypes = append(requiredRequestTypes, checker.FileBased)
 	}
+	// if commit option set to anything other than HEAD add commit based
 	if !strings.EqualFold(o.Commit, clients.HeadSHA) {
 		requiredRequestTypes = append(requiredRequestTypes, checker.CommitBased)
 	}
+	// this call to policy is different from the one in scorecard.Run
+	// this one is concerned with a policy file, while the scorecard.Run call is
+	// more concerned with the supported request types
 	enabledChecks, err := policy.GetEnabled(pol, o.Checks(), requiredRequestTypes)
 	if err != nil {
 		return fmt.Errorf("GetEnabled: %w", err)
 	}
+	checks := make([]string, 0, len(enabledChecks))
+	for c := range enabledChecks {
+		checks = append(checks, c)
+	}
 
+	enabledProbes := o.Probes()
 	if o.Format == options.FormatDefault {
-		for checkName := range enabledChecks {
-			fmt.Fprintf(os.Stderr, "Starting [%s]\n", checkName)
+		if len(enabledProbes) > 0 {
+			printProbeStart(enabledProbes)
+		} else {
+			printCheckStart(enabledChecks)
 		}
 	}
 
-	repoResult, err := pkg.RunScorecard(
-		ctx,
-		repoURI,
-		o.Commit,
-		o.CommitDepth,
-		enabledChecks,
-		repoClient,
-		ossFuzzRepoClient,
-		ciiClient,
-		vulnsClient,
-	)
+	opts := []scorecard.Option{
+		scorecard.WithLogLevel(sclog.ParseLevel(o.LogLevel)),
+		scorecard.WithCommitSHA(o.Commit),
+		scorecard.WithCommitDepth(o.CommitDepth),
+		scorecard.WithProbes(enabledProbes),
+		scorecard.WithChecks(checks),
+	}
+	if strings.EqualFold(o.FileMode, options.FileModeGit) {
+		opts = append(opts, scorecard.WithFileModeGit())
+	}
+
+	repoResult, err = scorecard.Run(ctx, repo, opts...)
 	if err != nil {
-		return fmt.Errorf("RunScorecard: %w", err)
+		return fmt.Errorf("scorecard.Run: %w", err)
 	}
 
 	repoResult.Metadata = append(repoResult.Metadata, o.Metadata...)
@@ -147,13 +171,14 @@ func rootCmd(o *options.Options) error {
 	})
 
 	if o.Format == options.FormatDefault {
-		for checkName := range enabledChecks {
-			fmt.Fprintf(os.Stderr, "Finished [%s]\n", checkName)
+		if len(enabledProbes) > 0 {
+			printProbeResults(enabledProbes)
+		} else {
+			printCheckResults(enabledChecks)
 		}
-		fmt.Println("\nRESULTS\n-------")
 	}
 
-	resultsErr := pkg.FormatResults(
+	resultsErr := scorecard.FormatResults(
 		o,
 		&repoResult,
 		checkDocs,
@@ -166,8 +191,65 @@ func rootCmd(o *options.Options) error {
 	// intentionally placed at end to preserve outputting results, even if a check has a runtime error
 	for _, result := range repoResult.Checks {
 		if result.Error != nil {
-			return sce.WithMessage(sce.ErrorCheckRuntime, fmt.Sprintf("%s: %v", result.Name, result.Error))
+			return sce.WithMessage(sce.ErrCheckRuntime, fmt.Sprintf("%s: %v", result.Name, result.Error))
 		}
 	}
 	return nil
+}
+
+func printProbeStart(enabledProbes []string) {
+	for _, probeName := range enabledProbes {
+		fmt.Fprintf(os.Stderr, "Starting probe [%s]\n", probeName)
+	}
+}
+
+func printCheckStart(enabledChecks checker.CheckNameToFnMap) {
+	for checkName := range enabledChecks {
+		fmt.Fprintf(os.Stderr, "Starting [%s]\n", checkName)
+	}
+}
+
+func printProbeResults(enabledProbes []string) {
+	for _, probeName := range enabledProbes {
+		fmt.Fprintf(os.Stderr, "Finished probe %s\n", probeName)
+	}
+}
+
+func printCheckResults(enabledChecks checker.CheckNameToFnMap) {
+	for checkName := range enabledChecks {
+		fmt.Fprintf(os.Stderr, "Finished [%s]\n", checkName)
+	}
+	fmt.Fprintln(os.Stderr, "\nRESULTS\n-------")
+}
+
+// makeRepo helps turn a URI into the appropriate clients.Repo.
+// currently this is a decision between GitHub, GitLab, and Azure DevOps,
+// but may expand in the future.
+func makeRepo(uri string) (clients.Repo, error) {
+	var repo clients.Repo
+	var errGitHub, errGitLab, errAzureDevOps error
+	var compositeErr error
+
+	repo, errGitHub = githubrepo.MakeGithubRepo(uri)
+	if errGitHub == nil {
+		return repo, nil
+	}
+	compositeErr = errors.Join(compositeErr, errGitHub)
+
+	repo, errGitLab = gitlabrepo.MakeGitlabRepo(uri)
+	if errGitLab == nil {
+		return repo, nil
+	}
+	compositeErr = errors.Join(compositeErr, errGitLab)
+
+	_, experimental := os.LookupEnv("SCORECARD_EXPERIMENTAL")
+	if experimental {
+		repo, errAzureDevOps = azuredevopsrepo.MakeAzureDevOpsRepo(uri)
+		if errAzureDevOps == nil {
+			return repo, nil
+		}
+		compositeErr = errors.Join(compositeErr, errAzureDevOps)
+	}
+
+	return nil, fmt.Errorf("unable to parse as github, gitlab, or azuredevops: %w", compositeErr)
 }

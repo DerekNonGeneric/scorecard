@@ -21,16 +21,16 @@ import (
 )
 
 func TestRepoURL_IsValid(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name     string
 		inputURL string
-		expected repoURL
+		expected Repo
 		wantErr  bool
+		ghHost   bool
 	}{
 		{
 			name: "Valid http address",
-			expected: repoURL{
+			expected: Repo{
 				host:  "github.com",
 				owner: "foo",
 				repo:  "kubeflow",
@@ -40,7 +40,7 @@ func TestRepoURL_IsValid(t *testing.T) {
 		},
 		{
 			name: "Valid http address with trailing slash",
-			expected: repoURL{
+			expected: Repo{
 				host:  "github.com",
 				owner: "foo",
 				repo:  "kubeflow",
@@ -49,8 +49,8 @@ func TestRepoURL_IsValid(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name: "Non github repository",
-			expected: repoURL{
+			name: "Non GitHub repository",
+			expected: Repo{
 				host:  "gitlab.com",
 				owner: "foo",
 				repo:  "kubeflow",
@@ -59,8 +59,8 @@ func TestRepoURL_IsValid(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name: "github repository",
-			expected: repoURL{
+			name: "GitHub repository",
+			expected: Repo{
 				host:  "github.com",
 				owner: "foo",
 				repo:  "kubeflow",
@@ -69,8 +69,8 @@ func TestRepoURL_IsValid(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name: "github repository",
-			expected: repoURL{
+			name: "GitHub repository with host",
+			expected: Repo{
 				host:  "github.com",
 				owner: "foo",
 				repo:  "kubeflow",
@@ -78,12 +78,37 @@ func TestRepoURL_IsValid(t *testing.T) {
 			inputURL: "https://github.com/foo/kubeflow",
 			wantErr:  false,
 		},
+		{
+			name: "Enterprise github repository with host",
+			expected: Repo{
+				host:  "github.corp.com",
+				owner: "corpfoo",
+				repo:  "kubeflow",
+			},
+			inputURL: "https://github.corp.com/corpfoo/kubeflow",
+			wantErr:  false,
+			ghHost:   true,
+		},
+		{
+			name: "Enterprise github repository",
+			expected: Repo{
+				host:  "github.corp.com",
+				owner: "corpfoo",
+				repo:  "kubeflow",
+			},
+			inputURL: "corpfoo/kubeflow",
+			wantErr:  false,
+			ghHost:   true,
+		},
 	}
 	for _, tt := range tests {
 		tt := tt // Re-initializing variable so it is not changed while executing the closure below
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			r := repoURL{
+			if tt.ghHost {
+				t.Setenv("GH_HOST", "github.corp.com")
+			}
+
+			r := Repo{
 				host:  tt.expected.host,
 				owner: tt.expected.owner,
 				repo:  tt.expected.repo,
@@ -94,10 +119,9 @@ func TestRepoURL_IsValid(t *testing.T) {
 			if err := r.IsValid(); (err != nil) != tt.wantErr {
 				t.Errorf("repoURL.IsValid() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			if !tt.wantErr && !cmp.Equal(tt.expected, r, cmp.AllowUnexported(repoURL{})) {
+			if !tt.wantErr && !cmp.Equal(tt.expected, r, cmp.AllowUnexported(Repo{})) {
 				t.Errorf("Got diff: %s", cmp.Diff(tt.expected, r))
 			}
-
 			if !cmp.Equal(r.Host(), tt.expected.host) {
 				t.Errorf("%s expected host: %s got host %s", tt.inputURL, tt.expected.host, r.Host())
 			}

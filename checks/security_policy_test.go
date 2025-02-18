@@ -15,26 +15,25 @@
 package checks
 
 import (
-	"fmt"
+	"io"
 	"os"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 
-	"github.com/ossf/scorecard/v4/checker"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestSecurityPolicy(t *testing.T) {
 	t.Parallel()
-	//nolint
 	tests := []struct {
 		name    string
 		path    string
 		files   []string
-		wantErr bool
 		want    scut.TestReturn
+		wantErr bool
 	}{
 		{
 			name: "security.md",
@@ -62,7 +61,7 @@ func TestSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: "docs/security.md",
-			path: "./testdata/securitypolicy/04_textAndDisclosureVuls",
+			path: "./testdata/securitypolicy/04_textAndDisclosureVulns",
 			files: []string{
 				"docs/security.md",
 			},
@@ -134,7 +133,7 @@ func TestSecurityPolicy(t *testing.T) {
 		},
 		{
 			name: ".github/security.adoc",
-			path: "./testdata/securitypolicy/10_linkedContentAndTextAndDisclosureVuls",
+			path: "./testdata/securitypolicy/10_linkedContentAndTextAndDisclosureVulns",
 			files: []string{
 				".github/security.adoc",
 			},
@@ -179,28 +178,22 @@ func TestSecurityPolicy(t *testing.T) {
 
 			mockRepo.EXPECT().ListFiles(gomock.Any()).Return(tt.files, nil).AnyTimes()
 
-			mockRepo.EXPECT().GetFileContent(gomock.Any()).DoAndReturn(func(fn string) ([]byte, error) {
+			mockRepo.EXPECT().GetFileReader(gomock.Any()).DoAndReturn(func(fn string) (io.ReadCloser, error) {
 				if tt.path == "" {
 					return nil, nil
 				}
-				content, err := os.ReadFile(tt.path)
-				if err != nil {
-					return content, fmt.Errorf("%w", err)
-				}
-				return content, nil
+				return os.Open(tt.path)
 			}).AnyTimes()
 
 			dl := scut.TestDetailLogger{}
-			c := checker.CheckRequest{
+			c := &checker.CheckRequest{
 				RepoClient: mockRepo,
 				Dlogger:    &dl,
 			}
 
-			res := SecurityPolicy(&c)
+			res := SecurityPolicy(c)
 
-			if !scut.ValidateTestReturn(t, tt.name, &tt.want, &res, &dl) {
-				t.Errorf("test failed: log message not present: %+v on %+v", tt.want, res)
-			}
+			scut.ValidateTestReturn(t, tt.name, &tt.want, &res, &dl)
 		})
 	}
 }

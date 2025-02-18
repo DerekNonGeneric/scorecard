@@ -17,7 +17,7 @@ package format
 import (
 	"strings"
 
-	docs "github.com/ossf/scorecard/v4/docs/checks"
+	docs "github.com/ossf/scorecard/v5/docs/checks"
 )
 
 type mockCheck struct {
@@ -70,8 +70,7 @@ type mockDoc struct {
 }
 
 func (d *mockDoc) GetCheck(name string) (docs.CheckDoc, error) {
-	//nolint: gosimple
-	m, _ := d.checks[name]
+	m := d.checks[name]
 	return &m, nil
 }
 

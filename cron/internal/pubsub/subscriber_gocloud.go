@@ -23,7 +23,7 @@ import (
 	// Needed to link in GCP drivers.
 	_ "gocloud.dev/pubsub/gcppubsub"
 
-	"github.com/ossf/scorecard/v4/cron/data"
+	"github.com/ossf/scorecard/v5/cron/data"
 )
 
 type receiver interface {
@@ -37,7 +37,6 @@ type gocloudSubscriber struct {
 	msg          *pubsub.Message
 }
 
-//nolint:unused,deadcode
 func createGocloudSubscriber(ctx context.Context, subscriptionURL string) (*gocloudSubscriber, error) {
 	subscription, err := pubsub.OpenSubscription(ctx, subscriptionURL)
 	if err != nil {

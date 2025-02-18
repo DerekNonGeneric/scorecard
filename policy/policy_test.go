@@ -19,13 +19,17 @@ import (
 	"os"
 	"testing"
 
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
 func TestPolicyRead(t *testing.T) {
 	t.Parallel()
 
-	//nolint
+	//nolint:govet
 	tests := []struct {
 		err      error
 		name     string
@@ -127,6 +131,247 @@ func TestPolicyRead(t *testing.T) {
 			// TODO: compare objects.
 			if p.String() != tt.result.String() {
 				t.Fatalf("%s: invalid result", tt.name)
+			}
+		})
+	}
+}
+
+func TestChecksHavePolicies(t *testing.T) {
+	t.Parallel()
+	// Create a sample ScorecardPolicy
+	sp := &ScorecardPolicy{
+		Version: 1,
+		Policies: map[string]*CheckPolicy{
+			"Binary-Artifacts": {
+				// Set fields of the CheckPolicy struct accordingly
+			},
+		},
+	}
+	check := checker.CheckNameToFnMap{
+		"Binary-Artifacts": checker.Check{
+			Fn: checks.BinaryArtifacts,
+		},
+	}
+
+	// Call the function being tested
+	result := checksHavePolicies(sp, check)
+
+	// Assert the result
+	if !result {
+		t.Error("Expected checks to have policies")
+	}
+
+	delete(sp.GetPolicies(), "Binary-Artifacts")
+	// Call the function being tested
+	result = checksHavePolicies(sp, check)
+
+	if result {
+		t.Error("Expected checks to have no policies")
+	}
+}
+
+func TestEnableCheck(t *testing.T) {
+	t.Parallel()
+
+	// Create a sample check name
+	checkName := "Binary-Artifacts"
+
+	// Create a sample enabled checks map
+	enabledChecks := make(checker.CheckNameToFnMap)
+
+	// Call the function being tested
+	result := enableCheck(checkName, &enabledChecks)
+
+	// Assert the result
+	if !result {
+		t.Error("Expected the check to be enabled")
+	}
+	if _, ok := enabledChecks[checkName]; !ok {
+		t.Error("Expected the check to be added to enabled checks")
+	}
+
+	// Try enabling a check that does not exist
+	nonExistentCheck := "Non-Existent-Check"
+	result = enableCheck(nonExistentCheck, &enabledChecks)
+
+	// Assert the result
+	if result {
+		t.Error("Expected the check to not be enabled")
+	}
+	if _, ok := enabledChecks[nonExistentCheck]; ok {
+		t.Error("Expected the check to not be added to enabled checks")
+	}
+}
+
+func TestIsSupportedCheck(t *testing.T) {
+	t.Parallel()
+
+	// Create a sample check name
+	checkName := "Binary-Artifacts"
+
+	// Create a sample list of required request types
+	requiredRequestTypes := []checker.RequestType{
+		checker.FileBased,
+	}
+
+	// Call the function being tested
+	result := isSupportedCheck(checkName, requiredRequestTypes)
+
+	// Assert the result
+	expectedResult := true
+	if result != expectedResult {
+		t.Errorf("Unexpected result: got %v, want %v", result, expectedResult)
+	}
+
+	// Try with an unsupported check
+	unsupportedCheckName := "Unsupported-Check"
+	result = isSupportedCheck(unsupportedCheckName, requiredRequestTypes)
+
+	// Assert the result
+	expectedResult = false
+	if diff := cmp.Diff(result, expectedResult); diff != "" {
+		t.Errorf("Unexpected result (-got +want):\n%s", diff)
+	}
+
+	// Additional test cases can be added to cover more scenarios
+}
+
+func TestParseFromFile(t *testing.T) {
+	t.Parallel()
+
+	// Provide the path to the policy file
+	policyFile := "testdata/policy-ok.yaml"
+
+	// Call the function being tested
+	sp, err := ParseFromFile(policyFile)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if len(sp.GetPolicies()) != 3 {
+		t.Errorf("Unexpected number of policies: got %v, want %v", len(sp.GetPolicies()), 3)
+	}
+	invalidPolicy := "testdata/policy-invalid-score-0.yaml"
+	_, err = ParseFromFile(invalidPolicy)
+	if err == nil {
+		t.Error("Expected an error")
+	}
+	invalidMode := "testdata/policy-invalid-mode.yaml"
+	_, err = ParseFromFile(invalidMode)
+	if err == nil {
+		t.Error("Expected an error")
+	}
+	invalidFile := "testdata/invalid-file.yaml"
+	_, err = ParseFromFile(invalidFile)
+	if err == nil {
+		t.Error("Expected an error")
+	}
+}
+
+func TestModeToProto(t *testing.T) {
+	t.Parallel()
+
+	// Call the function being tested
+	mode := modeToProto("enforced")
+
+	// Check the result
+	expectedMode := CheckPolicy_ENFORCED
+	if mode != expectedMode {
+		t.Errorf("Unexpected mode. Got: %v, Want: %v", mode, expectedMode)
+	}
+
+	// Call the function again with a different mode
+	mode = modeToProto("disabled")
+
+	// Check the result
+	expectedMode = CheckPolicy_DISABLED
+	if mode != expectedMode {
+		t.Errorf("Unexpected mode. Got: %v, Want: %v", mode, expectedMode)
+	}
+
+	// Test panic with an unknown mode
+	testPanic := func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("Expected panic, but no panic occurred")
+			}
+		}()
+		modeToProto("unknown")
+	}
+
+	// Run the panic test
+	testPanic()
+
+	// Additional test cases can be added to cover more scenarios
+}
+
+func TestGetEnabled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                  string
+		policyFile            string
+		argsChecks            []string
+		requiredRequestTypes  []checker.RequestType
+		expectedEnabledChecks int
+		expectedError         bool
+	}{
+		{
+			name:                  "checks limited to those specified by checks arg",
+			argsChecks:            []string{"Binary-Artifacts"},
+			requiredRequestTypes:  []checker.RequestType{checker.FileBased},
+			expectedEnabledChecks: 1,
+			expectedError:         false,
+		},
+		{
+			name:                  "mix of supported and unsupported checks",
+			argsChecks:            []string{"Binary-Artifacts", "UnsupportedCheck"},
+			requiredRequestTypes:  []checker.RequestType{checker.FileBased, checker.CommitBased},
+			expectedEnabledChecks: 1,
+			expectedError:         true,
+		},
+		{
+			name:                  "request types limit enabled checks",
+			argsChecks:            []string{},
+			requiredRequestTypes:  []checker.RequestType{checker.FileBased, checker.CommitBased},
+			expectedEnabledChecks: 7, // All checks which are FileBased and CommitBased
+			expectedError:         false,
+		},
+		{
+			name:                  "all checks in policy file enabled",
+			policyFile:            "testdata/policy-ok.yaml",
+			argsChecks:            []string{},
+			requiredRequestTypes:  []checker.RequestType{},
+			expectedEnabledChecks: 3,
+			expectedError:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var sp *ScorecardPolicy
+			if tt.policyFile != "" {
+				policyBytes, err := os.ReadFile(tt.policyFile)
+				if err != nil {
+					t.Fatalf("reading policy file: %v", err)
+				}
+				pol, err := parseFromYAML(policyBytes)
+				if err != nil {
+					t.Fatalf("parsing policy file: %v", err)
+				}
+				sp = pol
+			}
+
+			enabledChecks, err := GetEnabled(sp, tt.argsChecks, tt.requiredRequestTypes)
+
+			if len(enabledChecks) != tt.expectedEnabledChecks {
+				t.Errorf("Unexpected number of enabled checks: got %v, want %v", len(enabledChecks), tt.expectedEnabledChecks)
+			}
+			if tt.expectedError && err == nil {
+				t.Errorf("Expected an error, but got none")
+			} else if !tt.expectedError && err != nil {
+				t.Errorf("Unexpected error: %v", err)
 			}
 		})
 	}

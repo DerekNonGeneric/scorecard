@@ -17,164 +17,85 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/ossf/scorecard/v4/checker"
-	sce "github.com/ossf/scorecard/v4/errors"
-	"github.com/ossf/scorecard/v4/finding"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/probes/dependencyUpdateToolConfigured"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestDependencyUpdateTool(t *testing.T) {
 	t.Parallel()
-	//nolint
-	type args struct {
-		name string
-		dl   checker.DetailLogger
-		r    *checker.DependencyUpdateToolData
-	}
-	//nolint
 	tests := []struct {
 		name     string
-		args     args
-		want     checker.CheckResult
-		err      bool
-		expected scut.TestReturn
+		findings []finding.Finding
+		result   scut.TestReturn
 	}{
 		{
-			name: "DependencyUpdateTool",
-			args: args{
-				name: "DependencyUpdateTool",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.DependencyUpdateToolData{
-					Tools: []checker.Tool{
-						{
-							Name: "DependencyUpdateTool",
-						},
-					},
-				},
+			name: "one update tool is max score",
+			findings: []finding.Finding{
+				depUpdateTool("Dependabot"),
 			},
-			want: checker.CheckResult{
-				Score: -1,
-			},
-			err: false,
-			expected: scut.TestReturn{
-				Error: sce.ErrScorecardInternal,
-				Score: -1,
+			result: scut.TestReturn{
+				Score:        checker.MaxResultScore,
+				NumberOfInfo: 1,
 			},
 		},
 		{
-			name: "empty tool list",
-			args: args{
-				name: "DependencyUpdateTool",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.DependencyUpdateToolData{
-					Tools: []checker.Tool{},
+			name: "multiple update tools both logged",
+			findings: []finding.Finding{
+				depUpdateTool("RenovateBot"),
+				depUpdateTool("PyUp"),
+			},
+			result: scut.TestReturn{
+				Score:        checker.MaxResultScore,
+				NumberOfInfo: 2,
+			},
+		},
+		{
+			name: "no update tool is min score",
+			findings: []finding.Finding{
+				{
+					Probe:   dependencyUpdateToolConfigured.Probe,
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
-				Score: 0,
-				Error: nil,
-			},
-			err: false,
-			expected: scut.TestReturn{
-				Score:        0,
+			result: scut.TestReturn{
+				Score:        checker.MinResultScore,
 				NumberOfWarn: 1,
 			},
 		},
 		{
-			name: "Valid tool",
-			args: args{
-				name: "DependencyUpdateTool",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.DependencyUpdateToolData{
-					Tools: []checker.Tool{
-						{
-							Name: "DependencyUpdateTool",
-							Files: []checker.File{
-								{
-									Path: "/etc/dependency-update-tool.conf",
-									Snippet: `
-										[dependency-update-tool]
-										enabled = true
-										`,
-									Type: finding.FileTypeSource,
-								},
-							},
-						},
-					},
+			name: "invalid probe name is an error",
+			findings: []finding.Finding{
+				{
+					Probe:   "notARealProbe",
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
-				Score: 10,
-				Error: nil,
-			},
-			expected: scut.TestReturn{
-				Error:        nil,
-				Score:        10,
-				NumberOfInfo: 1,
-			},
-			err: false,
-		},
-		{
-			name: "more than one tool in the list",
-			args: args{
-				name: "DependencyUpdateTool",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.DependencyUpdateToolData{
-					Tools: []checker.Tool{
-						{
-							Name: "DependencyUpdateTool",
-						},
-						{
-							Name: "DependencyUpdateTool",
-						},
-					},
-				},
-			},
-			want: checker.CheckResult{
-				Score: -1,
-				Error: nil,
-			},
-			expected: scut.TestReturn{
+			result: scut.TestReturn{
+				Score: checker.InconclusiveResultScore,
 				Error: sce.ErrScorecardInternal,
-				Score: -1,
 			},
-			err: false,
-		},
-		{
-			name: "Nil r",
-			args: args{
-				name: "nil r",
-				dl:   &scut.TestDetailLogger{},
-			},
-			want: checker.CheckResult{
-				Score: -1,
-				Error: nil,
-			},
-			expected: scut.TestReturn{
-				Error: sce.ErrScorecardInternal,
-				Score: -1,
-			},
-			err: false,
 		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-
 			dl := scut.TestDetailLogger{}
-			got := DependencyUpdateTool(tt.args.name, &dl, tt.args.r)
-			if tt.want.Score != got.Score {
-				t.Errorf("DependencyUpdateTool() got Score = %v, want %v for %v", got.Score, tt.want.Score, tt.name)
-			}
-			if tt.err && got.Error == nil {
-				t.Errorf("DependencyUpdateTool() error = %v, want %v for %v", got.Error, tt.want.Error, tt.name)
-				return
-			}
-
-			if !scut.ValidateTestReturn(t, tt.name, &tt.expected, &got, &dl) {
-				t.Fatalf(tt.name)
-			}
+			got := DependencyUpdateTool(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
+	}
+}
+
+func depUpdateTool(name string) finding.Finding {
+	return finding.Finding{
+		Probe:   dependencyUpdateToolConfigured.Probe,
+		Outcome: finding.OutcomeTrue,
+		Values: map[string]string{
+			dependencyUpdateToolConfigured.ToolKey: name,
+		},
 	}
 }

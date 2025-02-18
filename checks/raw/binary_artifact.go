@@ -15,45 +15,35 @@
 package raw
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
-	semver "github.com/Masterminds/semver/v3"
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
 	"github.com/rhysd/actionlint"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/fileparser"
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
-	"github.com/ossf/scorecard/v4/finding"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/fileparser"
+	"github.com/ossf/scorecard/v5/clients"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
 )
 
-var (
-	gradleWrapperValidationActionRegex             = regexp.MustCompile(`^gradle\/wrapper-validation-action@v?(.+)$`)
-	gradleWrapperValidationActionVersionConstraint = mustParseConstraint(`>= 1.0.0`)
-)
-
-// mustParseConstraint attempts parse of semver constraint, panics if fail.
-func mustParseConstraint(c string) *semver.Constraints {
-	if c, err := semver.NewConstraint(c); err != nil {
-		panic(fmt.Errorf("failed to parse constraint: %w", err))
-	} else {
-		return c
-	}
-}
+// how many bytes are considered when determining if a file is text or binary.
+const binaryTestLen = 1024
 
 // BinaryArtifacts retrieves the raw data for the Binary-Artifacts check.
-func BinaryArtifacts(c clients.RepoClient) (checker.BinaryArtifactData, error) {
+func BinaryArtifacts(req *checker.CheckRequest) (checker.BinaryArtifactData, error) {
+	c := req.RepoClient
 	files := []checker.File{}
-	err := fileparser.OnMatchingFileContentDo(c, fileparser.PathMatcher{
+	err := fileparser.OnMatchingFileReaderDo(c, fileparser.PathMatcher{
 		Pattern:       "*",
 		CaseSensitive: false,
-	}, checkBinaryFileContent, &files)
+	}, checkBinaryFileReader, &files)
 	if err != nil {
 		return checker.BinaryArtifactData{}, fmt.Errorf("%w", err)
 	}
@@ -86,27 +76,25 @@ func excludeValidatedGradleWrappers(c clients.RepoClient, files []checker.File) 
 	}
 	// It has been confirmed that latest commit has validated JARs!
 	// Remove Gradle wrapper JARs from files.
-	filterFiles := []checker.File{}
-	for _, f := range files {
-		if filepath.Base(f.Path) != "gradle-wrapper.jar" {
-			filterFiles = append(filterFiles, f)
+	for i := range files {
+		if filepath.Base(files[i].Path) == "gradle-wrapper.jar" {
+			files[i].Type = finding.FileTypeBinaryVerified
 		}
 	}
-	files = filterFiles
 	return files, nil
 }
 
-var checkBinaryFileContent fileparser.DoWhileTrueOnFileContent = func(path string, content []byte,
+var checkBinaryFileReader fileparser.DoWhileTrueOnFileReader = func(path string, reader io.Reader,
 	args ...interface{},
 ) (bool, error) {
 	if len(args) != 1 {
 		return false, fmt.Errorf(
-			"checkBinaryFileContent requires exactly one argument: %w", errInvalidArgLength)
+			"checkBinaryFileReader requires exactly one argument: %w", errInvalidArgLength)
 	}
 	pfiles, ok := args[0].(*[]checker.File)
 	if !ok {
 		return false, fmt.Errorf(
-			"checkBinaryFileContent requires argument of type *[]checker.File: %w", errInvalidArgType)
+			"checkBinaryFileReader requires argument of type *[]checker.File: %w", errInvalidArgType)
 	}
 
 	binaryFileTypes := map[string]bool{
@@ -116,6 +104,7 @@ var checkBinaryFileContent fileparser.DoWhileTrueOnFileContent = func(path strin
 		"dey":    true,
 		"elf":    true,
 		"o":      true,
+		"a":      true,
 		"so":     true,
 		"macho":  true,
 		"iso":    true,
@@ -137,8 +126,13 @@ var checkBinaryFileContent fileparser.DoWhileTrueOnFileContent = func(path strin
 		"wasm":   true,
 		"whl":    true,
 	}
+
+	content, err := io.ReadAll(io.LimitReader(reader, binaryTestLen))
+	if err != nil {
+		return false, fmt.Errorf("reading file: %w", err)
+	}
+
 	var t types.Type
-	var err error
 	if len(content) == 0 {
 		return true, nil
 	}
@@ -168,14 +162,14 @@ var checkBinaryFileContent fileparser.DoWhileTrueOnFileContent = func(path strin
 	return true, nil
 }
 
-// determines if the first 1024 bytes are text
+// determines if the first binaryTestLen bytes are text
 //
 //	A version of golang.org/x/tools/godoc/util modified to allow carriage returns
 //	and utf8.RuneError (0xFFFD), as the file may not be utf8 encoded.
 func isText(s []byte) bool {
-	const max = 1024 // at least utf8.UTFMax
-	if len(s) > max {
-		s = s[0:max]
+	const maxLen = binaryTestLen // at least utf8.UTFMax (4)
+	if len(s) > maxLen {
+		s = s[0:maxLen]
 	}
 	for i, c := range string(s) {
 		if i+utf8.UTFMax > len(s) {
@@ -201,26 +195,35 @@ func gradleWrapperValidated(c clients.RepoClient) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("%w", err)
 	}
-	if gradleWrapperValidatingWorkflowFile != "" {
-		// If validated, check that latest commit has a relevant successful run
-		runs, err := c.ListSuccessfulWorkflowRuns(gradleWrapperValidatingWorkflowFile)
-		if err != nil {
-			return false, fmt.Errorf("failure listing workflow runs: %w", err)
-		}
-		commits, err := c.ListCommits()
-		if err != nil {
-			return false, fmt.Errorf("failure listing commits: %w", err)
-		}
-		if len(commits) < 1 || len(runs) < 1 {
+	// no matching files, validation failed
+	if gradleWrapperValidatingWorkflowFile == "" {
+		return false, nil
+	}
+
+	// If validated, check that latest commit has a relevant successful run
+	runs, err := c.ListSuccessfulWorkflowRuns(gradleWrapperValidatingWorkflowFile)
+	if err != nil {
+		// some clients, such as the local file client, don't support this feature
+		// claim unvalidated, so that other parts of the check can still be used.
+		if errors.Is(err, clients.ErrUnsupportedFeature) {
 			return false, nil
 		}
-		for _, r := range runs {
-			if *r.HeadSHA == commits[0].SHA {
-				// Commit has corresponding successful run!
-				return true, nil
-			}
+		return false, fmt.Errorf("failure listing workflow runs: %w", err)
+	}
+	commits, err := c.ListCommits()
+	if err != nil {
+		return false, fmt.Errorf("failure listing commits: %w", err)
+	}
+	if len(commits) < 1 || len(runs) < 1 {
+		return false, nil
+	}
+	for _, r := range runs {
+		if *r.HeadSHA == commits[0].SHA {
+			// Commit has corresponding successful run!
+			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
@@ -247,18 +250,8 @@ func checkWorkflowValidatesGradleWrapper(path string, content []byte, args ...in
 			if ea.Uses == nil {
 				continue
 			}
-			sms := gradleWrapperValidationActionRegex.FindStringSubmatch(ea.Uses.Value)
-			if len(sms) > 1 {
-				v, err := semver.NewVersion(sms[1])
-				if err != nil {
-					// Couldn't parse version, hopefully another step has
-					// a correct one.
-					continue
-				}
-				if !gradleWrapperValidationActionVersionConstraint.Check(v) {
-					// Version out of acceptable range.
-					continue
-				}
+			if strings.HasPrefix(ea.Uses.Value, "gradle/wrapper-validation-action@") ||
+				strings.HasPrefix(ea.Uses.Value, "gradle/actions/wrapper-validation@") {
 				// OK! This is it.
 				*validatingWorkflowFile = filepath.Base(path)
 				return false, nil
@@ -268,7 +261,7 @@ func checkWorkflowValidatesGradleWrapper(path string, content []byte, args ...in
 	return true, nil
 }
 
-// fileExists checks if a file of name name exists, including within
+// fileExists checks if a file named `name` exists, including within
 // subdirectories.
 func fileExists(files []checker.File, name string) bool {
 	for _, f := range files {

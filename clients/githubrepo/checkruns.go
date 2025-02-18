@@ -20,12 +20,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 	"github.com/shurcooL/githubv4"
 
-	"github.com/ossf/scorecard/v4/clients"
-	sce "github.com/ossf/scorecard/v4/errors"
-	"github.com/ossf/scorecard/v4/log"
+	"github.com/ossf/scorecard/v5/clients"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/log"
 )
 
 //nolint:govet
@@ -67,11 +67,11 @@ type checkRunsGraphqlData struct {
 
 type checkRunsByRef = map[string][]clients.CheckRun
 
-// nolint: govet
+//nolint:govet
 type checkrunsHandler struct {
 	client         *github.Client
 	graphClient    *githubv4.Client
-	repourl        *repoURL
+	repourl        *Repo
 	logger         *log.Logger
 	checkData      *checkRunsGraphqlData
 	setupOnce      *sync.Once
@@ -81,7 +81,7 @@ type checkrunsHandler struct {
 	errSetup       error
 }
 
-func (handler *checkrunsHandler) init(ctx context.Context, repourl *repoURL, commitDepth int) {
+func (handler *checkrunsHandler) init(ctx context.Context, repourl *Repo, commitDepth int) {
 	handler.ctx = ctx
 	handler.repourl = repourl
 	handler.commitDepth = commitDepth

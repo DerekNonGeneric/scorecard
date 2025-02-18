@@ -20,9 +20,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/go-github/v38/github"
+	"github.com/google/go-github/v53/github"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
 
 type webhookHandler struct {
@@ -30,11 +30,11 @@ type webhookHandler struct {
 	once     *sync.Once
 	ctx      context.Context
 	errSetup error
-	repourl  *repoURL
+	repourl  *Repo
 	webhook  []clients.Webhook
 }
 
-func (handler *webhookHandler) init(ctx context.Context, repourl *repoURL) {
+func (handler *webhookHandler) init(ctx context.Context, repourl *Repo) {
 	handler.ctx = ctx
 	handler.repourl = repourl
 	handler.errSetup = nil

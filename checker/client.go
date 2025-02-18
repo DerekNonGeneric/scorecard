@@ -19,12 +19,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ossf/scorecard/v4/clients"
-	ghrepo "github.com/ossf/scorecard/v4/clients/githubrepo"
-	glrepo "github.com/ossf/scorecard/v4/clients/gitlabrepo"
-	"github.com/ossf/scorecard/v4/clients/localdir"
-	"github.com/ossf/scorecard/v4/clients/ossfuzz"
-	"github.com/ossf/scorecard/v4/log"
+	"github.com/ossf/scorecard/v5/clients"
+	azdorepo "github.com/ossf/scorecard/v5/clients/azuredevopsrepo"
+	ghrepo "github.com/ossf/scorecard/v5/clients/githubrepo"
+	glrepo "github.com/ossf/scorecard/v5/clients/gitlabrepo"
+	"github.com/ossf/scorecard/v5/clients/localdir"
+	"github.com/ossf/scorecard/v5/clients/ossfuzz"
+	"github.com/ossf/scorecard/v5/internal/packageclient"
+	"github.com/ossf/scorecard/v5/log"
 )
 
 // GetClients returns a list of clients for running scorecard checks.
@@ -35,6 +37,7 @@ func GetClients(ctx context.Context, repoURI, localURI string, logger *log.Logge
 	clients.RepoClient, // ossFuzzClient
 	clients.CIIBestPracticesClient, // ciiClient
 	clients.VulnerabilitiesClient, // vulnClient
+	packageclient.ProjectPackageClient, // projectClient
 	error,
 ) {
 	var repo clients.Repo
@@ -51,35 +54,26 @@ func GetClients(ctx context.Context, repoURI, localURI string, logger *log.Logge
 			nil, /*ossFuzzClient*/
 			nil, /*ciiClient*/
 			clients.DefaultVulnerabilitiesClient(), /*vulnClient*/
+			nil,
 			retErr
 	}
 
 	_, experimental := os.LookupEnv("SCORECARD_EXPERIMENTAL")
 	var repoClient clients.RepoClient
 
-	//nolint:nestif
-	if experimental && glrepo.DetectGitLab(repoURI) {
-		repo, makeRepoError = glrepo.MakeGitlabRepo(repoURI)
-		if makeRepoError != nil {
-			return repo,
-				nil,
-				nil,
-				nil,
-				nil,
-				fmt.Errorf("getting local directory client: %w", makeRepoError)
-		}
+	repo, makeRepoError = glrepo.MakeGitlabRepo(repoURI)
+	if repo != nil && makeRepoError == nil {
+		repoClient, makeRepoError = glrepo.CreateGitlabClient(ctx, repo.Host())
+	}
 
-		var err error
-		repoClient, err = glrepo.CreateGitlabClientWithToken(ctx, os.Getenv("GITLAB_AUTH_TOKEN"), repo)
-		if err != nil {
-			return repo,
-				nil,
-				nil,
-				nil,
-				nil,
-				fmt.Errorf("error creating gitlab client: %w", err)
+	if experimental && (makeRepoError != nil || repo == nil) {
+		repo, makeRepoError = azdorepo.MakeAzureDevOpsRepo(repoURI)
+		if repo != nil && makeRepoError == nil {
+			repoClient, makeRepoError = azdorepo.CreateAzureDevOpsClient(ctx, repo)
 		}
-	} else {
+	}
+
+	if makeRepoError != nil || repo == nil {
 		repo, makeRepoError = ghrepo.MakeGithubRepo(repoURI)
 		if makeRepoError != nil {
 			return repo,
@@ -87,7 +81,8 @@ func GetClients(ctx context.Context, repoURI, localURI string, logger *log.Logge
 				nil,
 				nil,
 				nil,
-				fmt.Errorf("getting local directory client: %w", makeRepoError)
+				packageclient.CreateDepsDevClient(),
+				fmt.Errorf("error making github repo: %w", makeRepoError)
 		}
 		repoClient = ghrepo.CreateGithubRepoClient(ctx, logger)
 	}
@@ -97,5 +92,6 @@ func GetClients(ctx context.Context, repoURI, localURI string, logger *log.Logge
 		ossfuzz.CreateOSSFuzzClient(ossfuzz.StatusURL), /*ossFuzzClient*/
 		clients.DefaultCIIBestPracticesClient(), /*ciiClient*/
 		clients.DefaultVulnerabilitiesClient(), /*vulnClient*/
+		packageclient.CreateDepsDevClient(),
 		nil
 }

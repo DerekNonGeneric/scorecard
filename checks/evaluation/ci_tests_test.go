@@ -16,188 +16,102 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/finding"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
-func Test_isTest(t *testing.T) {
+// Tip: If you add new findings to this test, else
+// add a unit test to the probes with the same findings.
+func TestCITests(t *testing.T) {
 	t.Parallel()
-	type args struct {
-		s string
-	}
 	tests := []struct {
-		name string
-		args args
-		want bool
+		name     string
+		findings []finding.Finding
+		result   scut.TestReturn
 	}{
 		{
-			name: "appveyor",
-			args: args{
-				s: "appveyor",
+			name: "Has CI tests. 1 tested out of 1 merged",
+			findings: []finding.Finding{
+				{
+					Outcome:  finding.OutcomeTrue,
+					Probe:    "testsRunInCI",
+					Message:  "CI test found: pr: 1, context: e2e",
+					Location: &finding.Location{Type: 4},
+				},
 			},
-			want: true,
+			result: scut.TestReturn{
+				Score:         10,
+				NumberOfDebug: 1,
+			},
 		},
 		{
-			name: "circleci",
-			args: args{
-				s: "circleci",
+			name: "Has CI tests. 3 tested out of 4 merged",
+			findings: []finding.Finding{
+				{
+					Outcome:  finding.OutcomeTrue,
+					Probe:    "testsRunInCI",
+					Message:  "CI test found: pr: 1, context: e2e",
+					Location: &finding.Location{Type: 4},
+				},
+				{
+					Outcome:  finding.OutcomeTrue,
+					Probe:    "testsRunInCI",
+					Message:  "CI test found: pr: 1, context: e2e",
+					Location: &finding.Location{Type: 4},
+				},
+				{
+					Outcome:  finding.OutcomeTrue,
+					Probe:    "testsRunInCI",
+					Message:  "CI test found: pr: 1, context: e2e",
+					Location: &finding.Location{Type: 4},
+				},
+				{
+					Outcome:  finding.OutcomeFalse,
+					Probe:    "testsRunInCI",
+					Message:  "CI test found: pr: 1, context: e2e",
+					Location: &finding.Location{Type: 4},
+				},
 			},
-			want: true,
+			result: scut.TestReturn{
+				Score:         7,
+				NumberOfDebug: 4,
+			},
 		},
 		{
-			name: "jenkins",
-			args: args{
-				s: "jenkins",
+			name: "Tests debugging",
+			findings: []finding.Finding{
+				{
+					Outcome:  finding.OutcomeFalse,
+					Probe:    "testsRunInCI",
+					Message:  "merged PR 1 without CI test at HEAD: 1",
+					Location: &finding.Location{Type: 4},
+				},
+				{
+					Outcome:  finding.OutcomeFalse,
+					Probe:    "testsRunInCI",
+					Message:  "merged PR 1 without CI test at HEAD: 1",
+					Location: &finding.Location{Type: 4},
+				},
+				{
+					Outcome:  finding.OutcomeFalse,
+					Probe:    "testsRunInCI",
+					Message:  "merged PR 1 without CI test at HEAD: 1",
+					Location: &finding.Location{Type: 4},
+				},
 			},
-			want: true,
-		},
-		{
-			name: "e2e",
-			args: args{
-				s: "e2e",
+			result: scut.TestReturn{
+				NumberOfDebug: 3,
+				Score:         0,
 			},
-			want: true,
-		},
-		{
-			name: "github-actions",
-			args: args{
-				s: "github-actions",
-			},
-			want: true,
-		},
-		{
-			name: "mergeable",
-			args: args{
-				s: "mergeable",
-			},
-			want: true,
-		},
-		{
-			name: "packit-as-a-service",
-			args: args{
-				s: "packit-as-a-service",
-			},
-			want: true,
-		},
-		{
-			name: "semaphoreci",
-			args: args{
-				s: "semaphoreci",
-			},
-			want: true,
-		},
-		{
-			name: "test",
-			args: args{
-				s: "test",
-			},
-			want: true,
-		},
-		{
-			name: "travis-ci",
-			args: args{
-				s: "travis-ci",
-			},
-			want: true,
-		},
-		{
-			name: "azure-pipelines",
-			args: args{
-				s: "azure-pipelines",
-			},
-			want: true,
-		},
-		{
-			name: "non-existing",
-			args: args{
-				s: "non-existing",
-			},
-			want: false,
 		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := isTest(tt.args.s); got != tt.want {
-				t.Errorf("isTest() = %v, want %v for test %v", got, tt.want, tt.name)
-			}
+			dl := scut.TestDetailLogger{}
+			got := CITests(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
-	}
-}
-
-func Test_prHasSuccessfulCheck(t *testing.T) {
-	t.Parallel()
-
-	//enabled nolint because this is a test
-	//nolint
-	tests := []struct {
-		name    string
-		args    checker.RevisionCIInfo
-		want    bool
-		wantErr bool
-	}{
-		{
-			name: "check run with conclusion success",
-			args: checker.RevisionCIInfo{
-				PullRequestNumber: 1,
-				HeadSHA:           "sha",
-				CheckRuns: []clients.CheckRun{
-					{
-						App:        clients.CheckRunApp{Slug: "test"},
-						Conclusion: "success",
-						URL:        "url",
-						Status:     "completed",
-					},
-				},
-			},
-			want:    true,
-			wantErr: false,
-		},
-		{
-			name: "check run with conclusion not success",
-			args: checker.RevisionCIInfo{
-				PullRequestNumber: 1,
-				HeadSHA:           "sha",
-				CheckRuns: []clients.CheckRun{
-					{
-						App:        clients.CheckRunApp{Slug: "test"},
-						Conclusion: "failed",
-						URL:        "url",
-						Status:     "completed",
-					},
-				},
-			},
-			want:    false,
-			wantErr: false,
-		},
-		{
-			name: "check run with conclusion not success",
-			args: checker.RevisionCIInfo{
-				PullRequestNumber: 1,
-				HeadSHA:           "sha",
-				CheckRuns: []clients.CheckRun{
-					{
-						App:        clients.CheckRunApp{Slug: "test"},
-						Conclusion: "success",
-						URL:        "url",
-						Status:     "notcompleted",
-					},
-				},
-			},
-			want:    false,
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		dl := &scut.TestDetailLogger{}
-
-		//nolint:errcheck
-		got, _ := prHasSuccessfulCheck(tt.args, dl)
-		if got != tt.want {
-			t.Errorf("prHasSuccessfulCheck() = %v, want %v", got, tt.want)
-		}
 	}
 }

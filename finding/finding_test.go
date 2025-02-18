@@ -15,135 +15,116 @@
 package finding
 
 import (
-	"embed"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-
-	"github.com/ossf/scorecard/v4/rule"
+	"gopkg.in/yaml.v3"
 )
 
 func errCmp(e1, e2 error) bool {
 	return errors.Is(e1, e2) || errors.Is(e2, e1)
 }
 
-//go:embed testdata/*
-var testfs embed.FS
-
-func Test_New(t *testing.T) {
+func Test_FromBytes(t *testing.T) {
 	snippet := "some code snippet"
 	patch := "some patch values"
 	sline := uint(10)
 	eline := uint(46)
-	positiveOutcome := OutcomePositive
-	negativeOutcome := OutcomeNegative
+	trueOutcome := OutcomeTrue
+	falseOutcome := OutcomeFalse
 	t.Parallel()
-	// nolint:govet
 	tests := []struct {
-		name     string
-		id       string
-		outcome  *Outcome
 		err      error
+		outcome  *Outcome
 		metadata map[string]string
 		finding  *Finding
+		name     string
+		id       string
+		path     string
 	}{
 		{
-			name:    "risk high",
-			id:      "testdata/risk-high",
-			outcome: &negativeOutcome,
-			finding: &Finding{
-				Rule:    "testdata/risk-high",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
-					Text:     "step1\nstep2 https://www.google.com/something",
-					Markdown: "step1\nstep2 [google.com](https://www.google.com/something)",
-					Effort:   rule.RemediationEffortLow,
-				},
-			},
-		},
-		{
 			name:    "effort low",
-			id:      "testdata/effort-low",
-			outcome: &negativeOutcome,
+			id:      "effort-low",
+			path:    "testdata/effort-low.yml",
+			outcome: &falseOutcome,
 			finding: &Finding{
-				Rule:    "testdata/effort-low",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
+				Probe:   "effort-low",
+				Outcome: OutcomeFalse,
+				Remediation: &Remediation{
 					Text:     "step1\nstep2 https://www.google.com/something",
 					Markdown: "step1\nstep2 [google.com](https://www.google.com/something)",
-					Effort:   rule.RemediationEffortLow,
+					Effort:   RemediationEffortLow,
 				},
 			},
 		},
 		{
 			name:    "effort high",
-			id:      "testdata/effort-high",
-			outcome: &negativeOutcome,
+			id:      "effort-high",
+			path:    "testdata/effort-high.yml",
+			outcome: &falseOutcome,
 			finding: &Finding{
-				Rule:    "testdata/effort-high",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
+				Probe:   "effort-high",
+				Outcome: OutcomeFalse,
+				Remediation: &Remediation{
 					Text:     "step1\nstep2 https://www.google.com/something",
 					Markdown: "step1\nstep2 [google.com](https://www.google.com/something)",
-					Effort:   rule.RemediationEffortHigh,
+					Effort:   RemediationEffortHigh,
 				},
 			},
 		},
 		{
 			name:     "env variables",
-			id:       "testdata/metadata-variables",
-			outcome:  &negativeOutcome,
+			id:       "metadata-variables",
+			path:     "testdata/metadata-variables.yml",
+			outcome:  &falseOutcome,
 			metadata: map[string]string{"branch": "master", "repo": "ossf/scorecard"},
 			finding: &Finding{
-				Rule:    "testdata/metadata-variables",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
+				Probe:   "metadata-variables",
+				Outcome: OutcomeFalse,
+				Remediation: &Remediation{
 					Text:     "step1\nstep2 google.com/ossf/scorecard@master",
 					Markdown: "step1\nstep2 [google.com/ossf/scorecard@master](google.com/ossf/scorecard@master)",
-					Effort:   rule.RemediationEffortLow,
+					Effort:   RemediationEffortLow,
 				},
 			},
 		},
 		{
 			name:     "patch",
-			id:       "testdata/metadata-variables",
-			outcome:  &negativeOutcome,
+			id:       "metadata-variables",
+			path:     "testdata/metadata-variables.yml",
+			outcome:  &falseOutcome,
 			metadata: map[string]string{"branch": "master", "repo": "ossf/scorecard"},
 			finding: &Finding{
-				Rule:    "testdata/metadata-variables",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
+				Probe:   "metadata-variables",
+				Outcome: OutcomeFalse,
+				Remediation: &Remediation{
 					Text:     "step1\nstep2 google.com/ossf/scorecard@master",
 					Markdown: "step1\nstep2 [google.com/ossf/scorecard@master](google.com/ossf/scorecard@master)",
-					Effort:   rule.RemediationEffortLow,
+					Effort:   RemediationEffortLow,
 					Patch:    &patch,
 				},
 			},
 		},
 		{
 			name:     "location",
-			id:       "testdata/metadata-variables",
-			outcome:  &negativeOutcome,
+			id:       "metadata-variables",
+			path:     "testdata/metadata-variables.yml",
+			outcome:  &falseOutcome,
 			metadata: map[string]string{"branch": "master", "repo": "ossf/scorecard"},
 			finding: &Finding{
-				Rule:    "testdata/metadata-variables",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
+				Probe:   "metadata-variables",
+				Outcome: OutcomeFalse,
+				Remediation: &Remediation{
 					Text:     "step1\nstep2 google.com/ossf/scorecard@master",
 					Markdown: "step1\nstep2 [google.com/ossf/scorecard@master](google.com/ossf/scorecard@master)",
-					Effort:   rule.RemediationEffortLow,
+					Effort:   RemediationEffortLow,
 				},
 				Location: &Location{
 					Type:      FileTypeSource,
-					Value:     "path/to/file.txt",
+					Path:      "path/to/file.txt",
 					LineStart: &sline,
 					LineEnd:   &eline,
 					Snippet:   &snippet,
@@ -152,29 +133,29 @@ func Test_New(t *testing.T) {
 		},
 		{
 			name:     "text",
-			id:       "testdata/metadata-variables",
-			outcome:  &negativeOutcome,
+			id:       "metadata-variables",
+			path:     "testdata/metadata-variables.yml",
+			outcome:  &falseOutcome,
 			metadata: map[string]string{"branch": "master", "repo": "ossf/scorecard"},
 			finding: &Finding{
-				Rule:    "testdata/metadata-variables",
-				Outcome: OutcomeNegative,
-				Risk:    rule.RiskHigh,
-				Remediation: &rule.Remediation{
+				Probe:   "metadata-variables",
+				Outcome: OutcomeFalse,
+				Remediation: &Remediation{
 					Text:     "step1\nstep2 google.com/ossf/scorecard@master",
 					Markdown: "step1\nstep2 [google.com/ossf/scorecard@master](google.com/ossf/scorecard@master)",
-					Effort:   rule.RemediationEffortLow,
+					Effort:   RemediationEffortLow,
 				},
 				Message: "some text",
 			},
 		},
 		{
-			name:    "outcome",
-			id:      "testdata/metadata-variables",
-			outcome: &positiveOutcome,
+			name:    "true outcome",
+			id:      "metadata-variables",
+			path:    "testdata/metadata-variables.yml",
+			outcome: &trueOutcome,
 			finding: &Finding{
-				Rule:    "testdata/metadata-variables",
-				Outcome: OutcomePositive,
-				Risk:    rule.RiskHigh,
+				Probe:   "metadata-variables",
+				Outcome: OutcomeTrue,
 				Message: "some text",
 			},
 		},
@@ -184,7 +165,12 @@ func Test_New(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			r, err := New(testfs, tt.id)
+			content, err := os.ReadFile(tt.path)
+			if err != nil {
+				t.Fatal(err.Error())
+			}
+
+			r, err := FromBytes(content, tt.id)
 			if err != nil || tt.err != nil {
 				if !errCmp(err, tt.err) {
 					t.Fatalf("unexpected error: %v", cmp.Diff(err, tt.err, cmpopts.EquateErrors()))
@@ -204,7 +190,99 @@ func Test_New(t *testing.T) {
 			if tt.outcome != nil {
 				r = r.WithOutcome(*tt.outcome)
 			}
-			if diff := cmp.Diff(*tt.finding, *r); diff != "" {
+			if diff := cmp.Diff(*tt.finding, *r, cmpopts.IgnoreUnexported(Finding{})); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestOutcome_UnmarshalYAML(t *testing.T) {
+	t.Parallel()
+	type args struct {
+		n *yaml.Node
+	}
+	tests := []struct {
+		args        args
+		name        string
+		wantOutcome Outcome
+		wantErr     bool
+	}{
+		{
+			name:        "true outcome",
+			wantOutcome: OutcomeTrue,
+			args: args{
+				n: &yaml.Node{
+					Kind:  yaml.ScalarNode,
+					Value: "True",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "false outcome",
+			wantOutcome: OutcomeFalse,
+			args: args{
+				n: &yaml.Node{
+					Kind:  yaml.ScalarNode,
+					Value: "False",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NotAvailable outcome",
+			wantOutcome: OutcomeNotAvailable,
+			args: args{
+				n: &yaml.Node{
+					Kind:  yaml.ScalarNode,
+					Value: "NotAvailable",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "NotSupported outcome",
+			wantOutcome: OutcomeNotSupported,
+			args: args{
+				n: &yaml.Node{
+					Kind:  yaml.ScalarNode,
+					Value: "NotSupported",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "Unknown error",
+			wantOutcome: OutcomeError,
+			args: args{
+				n: &yaml.Node{
+					Kind:  yaml.ScalarNode,
+					Value: "Error",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Unknown outcome",
+			args: args{
+				n: &yaml.Node{
+					Kind:  yaml.ScalarNode,
+					Value: "Unknown",
+				},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt // Re-initializing variable so it is not changed while executing the closure below
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var v Outcome
+			if err := v.UnmarshalYAML(tt.args.n); (err != nil) != tt.wantErr {
+				t.Errorf("Outcome.UnmarshalYAML() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(tt.wantOutcome, v); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})

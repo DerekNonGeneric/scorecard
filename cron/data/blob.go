@@ -28,7 +28,7 @@ import (
 	// Needed to link in GCP drivers.
 	_ "gocloud.dev/blob/gcsblob"
 
-	"github.com/ossf/scorecard/v4/cron/config"
+	"github.com/ossf/scorecard/v5/cron/config"
 )
 
 const (
@@ -156,7 +156,7 @@ func ParseBlobFilename(key string) (time.Time, string, error) {
 	objectName := key[len(filePrefixFormat):]
 	t, err := time.Parse(filePrefixFormat, prefix)
 	if err != nil {
-		return t, "", fmt.Errorf("%w: %v", errParseBlobName, err)
+		return t, "", fmt.Errorf("%w: %w", errParseBlobName, err)
 	}
 	return t, objectName, nil
 }

@@ -16,44 +16,87 @@ package gitlabrepo
 
 import (
 	"fmt"
-	"strings"
+	"regexp"
 
-	"github.com/xanzy/go-gitlab"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/ossf/scorecard/v4/clients"
+	"github.com/ossf/scorecard/v5/clients"
 )
+
+var gitCommitHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
 
 type checkrunsHandler struct {
 	glClient *gitlab.Client
-	repourl  *repoURL
+	repourl  *Repo
 }
 
-func (handler *checkrunsHandler) init(repourl *repoURL) {
+func (handler *checkrunsHandler) init(repourl *Repo) {
 	handler.repourl = repourl
 }
 
 func (handler *checkrunsHandler) listCheckRunsForRef(ref string) ([]clients.CheckRun, error) {
-	pipelines, _, err := handler.glClient.Pipelines.ListProjectPipelines(
-		handler.repourl.project, &gitlab.ListProjectPipelinesOptions{})
+	var options gitlab.ListProjectPipelinesOptions
+
+	if gitCommitHashRegex.MatchString(ref) {
+		options.SHA = &ref
+	} else {
+		options.Ref = &ref
+	}
+
+	// Notes for GitLab ListProjectPipelines endpoint:
+	// Only full SHA works for SHA param, Short SHA does not work
+	// Branch names work for Ref Param, tags and SHAs do not work
+	// Reference: https://docs.gitlab.com/ee/api/pipelines.html#list-project-pipelines
+	pipelines, _, err := handler.glClient.Pipelines.ListProjectPipelines(handler.repourl.projectID, &options)
 	if err != nil {
 		return nil, fmt.Errorf("request for pipelines returned error: %w", err)
 	}
 
-	return checkRunsFrom(pipelines, ref), nil
+	return checkRunsFrom(pipelines), nil
 }
 
 // Conclusion does not exist in the pipelines for gitlab so I have a placeholder "" as the value.
-func checkRunsFrom(data []*gitlab.PipelineInfo, ref string) []clients.CheckRun {
+func checkRunsFrom(data []*gitlab.PipelineInfo) []clients.CheckRun {
 	var checkRuns []clients.CheckRun
 	for _, pipelineInfo := range data {
-		if strings.EqualFold(pipelineInfo.Ref, ref) {
-			// TODO: Can get more info from GitLab API here (e.g. pipeline name, URL)
-			// https://docs.gitlab.com/ee/api/pipelines.html#get-a-pipelines-test-report
-			checkRuns = append(checkRuns, clients.CheckRun{
-				Status: pipelineInfo.Status,
-				URL:    pipelineInfo.WebURL,
-			})
-		}
+		// TODO: Can get more info from GitLab API here (e.g. pipeline name, URL)
+		// https://docs.gitlab.com/ee/api/pipelines.html#get-a-pipelines-test-report
+		checkRuns = append(checkRuns, parseGitlabStatus(pipelineInfo))
 	}
 	return checkRuns
+}
+
+// Conclusion does not exist in the pipelines for gitlab,
+// so we parse the status to determine the conclusion if it exists.
+func parseGitlabStatus(info *gitlab.PipelineInfo) clients.CheckRun {
+	checkrun := clients.CheckRun{
+		URL: info.WebURL,
+	}
+	const completed = "completed"
+
+	switch info.Status {
+	case "created", "waiting_for_resource", "preparing", "pending", "scheduled":
+		checkrun.Status = "queued"
+	case "running":
+		checkrun.Status = "in_progress"
+	case "failed":
+		checkrun.Status = completed
+		checkrun.Conclusion = "failure"
+	case "success":
+		checkrun.Status = completed
+		checkrun.Conclusion = "success"
+	case "canceled":
+		checkrun.Status = completed
+		checkrun.Conclusion = "cancelled"
+	case "skipped":
+		checkrun.Status = completed
+		checkrun.Conclusion = "skipped"
+	case "manual":
+		checkrun.Status = completed
+		checkrun.Conclusion = "action_required"
+	default:
+		checkrun.Status = info.Status
+	}
+
+	return checkrun
 }

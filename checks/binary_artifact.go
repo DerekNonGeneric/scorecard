@@ -15,19 +15,22 @@
 package checks
 
 import (
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks/evaluation"
-	"github.com/ossf/scorecard/v4/checks/raw"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks/evaluation"
+	"github.com/ossf/scorecard/v5/checks/raw"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/probes"
+	"github.com/ossf/scorecard/v5/probes/zrunner"
 )
 
 // CheckBinaryArtifacts is the exported name for Binary-Artifacts check.
 const CheckBinaryArtifacts string = "Binary-Artifacts"
 
-//nolint
+//nolint:gochecknoinits
 func init() {
 	supportedRequestTypes := []checker.RequestType{
 		checker.CommitBased,
+		checker.FileBased,
 	}
 	if err := registerCheck(CheckBinaryArtifacts, BinaryArtifacts, supportedRequestTypes); err != nil {
 		// this should never happen
@@ -37,17 +40,24 @@ func init() {
 
 // BinaryArtifacts  will check the repository contains binary artifacts.
 func BinaryArtifacts(c *checker.CheckRequest) checker.CheckResult {
-	rawData, err := raw.BinaryArtifacts(c.RepoClient)
+	rawData, err := raw.BinaryArtifacts(c)
 	if err != nil {
 		e := sce.WithMessage(sce.ErrScorecardInternal, err.Error())
 		return checker.CreateRuntimeErrorResult(CheckBinaryArtifacts, e)
 	}
 
-	// Return raw results.
-	if c.RawResults != nil {
-		c.RawResults.BinaryArtifactResults = rawData
+	// Set the raw results.
+	pRawResults := getRawResults(c)
+	pRawResults.BinaryArtifactResults = rawData
+
+	// Evaluate the probes.
+	findings, err := zrunner.Run(pRawResults, probes.BinaryArtifacts)
+	if err != nil {
+		e := sce.WithMessage(sce.ErrScorecardInternal, err.Error())
+		return checker.CreateRuntimeErrorResult(CheckBinaryArtifacts, e)
 	}
 
-	// Return the score evaluation.
-	return evaluation.BinaryArtifacts(CheckBinaryArtifacts, c.Dlogger, &rawData)
+	ret := evaluation.BinaryArtifacts(CheckBinaryArtifacts, findings, c.Dlogger)
+	ret.Findings = findings
+	return ret
 }

@@ -23,9 +23,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks"
-	sce "github.com/ossf/scorecard/v4/errors"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks"
+	sce "github.com/ossf/scorecard/v5/errors"
 )
 
 var (
@@ -200,7 +200,7 @@ func GetEnabled(
 
 func checksHavePolicies(sp *ScorecardPolicy, enabledChecks checker.CheckNameToFnMap) bool {
 	for checkName := range enabledChecks {
-		_, exists := sp.Policies[checkName]
+		_, exists := sp.GetPolicies()[checkName]
 		if !exists {
 			log.Printf("check %s has no policy declared", checkName)
 			return false

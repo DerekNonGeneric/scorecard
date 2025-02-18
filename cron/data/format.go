@@ -17,6 +17,8 @@ package data
 import "strings"
 
 // CSVStrings is []string with support for CSV formatting.
+//
+//nolint:recvcheck // This would be a breaking change. Possible for V6?
 type CSVStrings []string
 
 // MarshalCSV implements []string -> []byte serialization.
@@ -24,7 +26,7 @@ func (s CSVStrings) MarshalCSV() ([]byte, error) {
 	return []byte(strings.Join(s, ",")), nil
 }
 
-// UnmarshalCSV implements []byte -> []string de-serializtion.
+// UnmarshalCSV implements []byte -> []string de-serialization.
 func (s *CSVStrings) UnmarshalCSV(input []byte) error {
 	if len(input) == 0 {
 		*s = nil

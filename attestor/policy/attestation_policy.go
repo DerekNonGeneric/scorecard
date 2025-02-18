@@ -22,11 +22,11 @@ import (
 	"github.com/gobwas/glob"
 	"gopkg.in/yaml.v2"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/checks"
-	sce "github.com/ossf/scorecard/v4/errors"
-	"github.com/ossf/scorecard/v4/finding"
-	sclog "github.com/ossf/scorecard/v4/log"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/checks"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	sclog "github.com/ossf/scorecard/v5/log"
 )
 
 //nolint:govet
@@ -120,7 +120,7 @@ func (ap *AttestationPolicy) EvaluateResults(raw *checker.RawResults) (PolicyRes
 
 	if ap.EnsureCodeReviewed {
 		// By default, if code review reqs. aren't specified, we assume
-		// the user wants there to be atleast one reviewer
+		// the user wants there to be at least one reviewer
 		if len(ap.CodeReviewRequirements.RequiredApprovers) == 0 &&
 			ap.CodeReviewRequirements.MinReviewers == 0 {
 			ap.CodeReviewRequirements.MinReviewers = 1

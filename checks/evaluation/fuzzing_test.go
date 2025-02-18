@@ -16,79 +16,68 @@ package evaluation
 import (
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-
-	"github.com/ossf/scorecard/v4/checker"
-	scut "github.com/ossf/scorecard/v4/utests"
+	"github.com/ossf/scorecard/v5/checker"
+	sce "github.com/ossf/scorecard/v5/errors"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/internal/fuzzers"
+	"github.com/ossf/scorecard/v5/probes/fuzzed"
+	scut "github.com/ossf/scorecard/v5/utests"
 )
 
 func TestFuzzing(t *testing.T) {
 	t.Parallel()
-	type args struct { //nolint
-		name string
-		dl   checker.DetailLogger
-		r    *checker.FuzzingData
-	}
 	tests := []struct {
-		name string
-		args args
-		want checker.CheckResult
+		name     string
+		findings []finding.Finding
+		result   scut.TestReturn
 	}{
 		{
-			name: "Fuzzing - no fuzzing",
-			args: args{
-				name: "Fuzzing",
-				dl:   &scut.TestDetailLogger{},
-				r:    &checker.FuzzingData{},
-			},
-			want: checker.CheckResult{
-				Score:   0,
-				Name:    "Fuzzing",
-				Version: 2,
-				Reason:  "project is not fuzzed",
-			},
-		},
-		{
-			name: "Fuzzing - fuzzing",
-			args: args{
-				name: "Fuzzing",
-				dl:   &scut.TestDetailLogger{},
-				r: &checker.FuzzingData{
-					Fuzzers: []checker.Tool{
-						{
-							Name: "Fuzzing",
-							Files: []checker.File{
-								{
-									Path:    "Fuzzing",
-									Type:    0,
-									Offset:  1,
-									Snippet: "Fuzzing",
-								},
-							},
-						},
-					},
+			name: "no fuzzers",
+			findings: []finding.Finding{
+				{
+					Probe:   fuzzed.Probe,
+					Outcome: finding.OutcomeFalse,
 				},
 			},
-			want: checker.CheckResult{
-				Score:   10,
-				Name:    "Fuzzing",
-				Version: 2,
-				Reason:  "project is fuzzed with [Fuzzing]",
+			result: scut.TestReturn{
+				Score:        checker.MinResultScore,
+				NumberOfWarn: 1,
 			},
 		},
 		{
-			name: "Fuzzing - fuzzing data nil",
-			args: args{
-				name: "Fuzzing",
-				dl:   &scut.TestDetailLogger{},
-				r:    nil,
+			name: "single fuzzer gives max score",
+			findings: []finding.Finding{
+				fuzzTool(fuzzers.BuiltInGo),
 			},
-			want: checker.CheckResult{
-				Score:   -1,
-				Name:    "Fuzzing",
-				Version: 2,
-				Reason:  "internal error: empty raw data",
+			result: scut.TestReturn{
+				Score:        checker.MaxResultScore,
+				NumberOfInfo: 1,
+			},
+		},
+		{
+			name: "one info per fuzzer",
+			findings: []finding.Finding{
+				fuzzTool(fuzzers.BuiltInGo),
+				fuzzTool(fuzzers.OSSFuzz),
+				fuzzTool(fuzzers.ClusterFuzzLite),
+			},
+			result: scut.TestReturn{
+				Score:        checker.MaxResultScore,
+				NumberOfInfo: 3,
+			},
+		},
+		{
+			name: "extra probe not part of check",
+			findings: []finding.Finding{
+				{
+					Probe:   "someUnrelatedProbe",
+					Outcome: finding.OutcomeFalse,
+				},
+				fuzzTool(fuzzers.RustCargoFuzz),
+			},
+			result: scut.TestReturn{
+				Score: checker.InconclusiveResultScore,
+				Error: sce.ErrScorecardInternal,
 			},
 		},
 	}
@@ -96,9 +85,19 @@ func TestFuzzing(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := Fuzzing(tt.args.name, tt.args.dl, tt.args.r); !cmp.Equal(got, tt.want, cmpopts.IgnoreFields(checker.CheckResult{}, "Error")) { //nolint:lll
-				t.Errorf("Fuzzing() = %v, want %v", got, cmp.Diff(got, tt.want, cmpopts.IgnoreFields(checker.CheckResult{}, "Error"))) //nolint:lll
-			}
+			dl := scut.TestDetailLogger{}
+			got := Fuzzing(tt.name, tt.findings, &dl)
+			scut.ValidateTestReturn(t, tt.name, &tt.result, &got, &dl)
 		})
+	}
+}
+
+func fuzzTool(name string) finding.Finding {
+	return finding.Finding{
+		Probe:   fuzzed.Probe,
+		Outcome: finding.OutcomeTrue,
+		Values: map[string]string{
+			fuzzed.ToolKey: name,
+		},
 	}
 }

@@ -21,9 +21,9 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/clients"
-	mockrepo "github.com/ossf/scorecard/v4/clients/mockclients"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/clients"
+	mockrepo "github.com/ossf/scorecard/v5/clients/mockclients"
 )
 
 var (
@@ -33,7 +33,7 @@ var (
 	mainBranchName    = "main"
 )
 
-// nolint: govet
+//nolint:govet
 type branchArg struct {
 	err           error
 	name          string
@@ -63,7 +63,7 @@ func (ba branchesArg) getBranch(b string) (*clients.BranchRef, error) {
 
 func TestBranchProtection(t *testing.T) {
 	t.Parallel()
-	//nolint: govet
+	//nolint:govet
 	tests := []struct {
 		name        string
 		branches    branchesArg
@@ -273,7 +273,11 @@ func TestBranchProtection(t *testing.T) {
 					return tt.releases, tt.releasesErr
 				})
 			mockRepoClient.EXPECT().ListFiles(gomock.Any()).AnyTimes().Return(tt.repoFiles, nil)
-			rawData, err := BranchProtection(mockRepoClient)
+
+			c := &checker.CheckRequest{
+				RepoClient: mockRepoClient,
+			}
+			rawData, err := BranchProtection(c)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("failed. expected: %v, got: %v", tt.wantErr, err)
 				t.Fail()

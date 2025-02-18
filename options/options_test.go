@@ -16,12 +16,9 @@
 package options
 
 import (
-	"os"
 	"testing"
 )
 
-// Cannot run parallel tests because of the ENV variables.
-//nolint
 func TestOptions_Validate(t *testing.T) {
 	type fields struct {
 		Repo              string
@@ -32,8 +29,10 @@ func TestOptions_Validate(t *testing.T) {
 		NPM               string
 		PyPI              string
 		RubyGems          string
+		Nuget             string
 		PolicyFile        string
 		ResultsFile       string
+		FileMode          string
 		ChecksToRun       []string
 		Metadata          []string
 		ShowDetails       bool
@@ -60,7 +59,7 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "format sarif and the enable sarif flag is set",
 			fields: fields{
-				Repo:        "github.com/oss/scorecard",
+				Repo:        "github.com/ossf/scorecard",
 				Commit:      "HEAD",
 				Format:      "sarif",
 				EnableSarif: true,
@@ -71,7 +70,7 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "format sarif and the disabled but the policy file is set",
 			fields: fields{
-				Repo:       "github.com/oss/scorecard",
+				Repo:       "github.com/ossf/scorecard",
 				Commit:     "HEAD",
 				PolicyFile: "testdata/policy.yaml",
 			},
@@ -80,15 +79,38 @@ func TestOptions_Validate(t *testing.T) {
 		{
 			name: "format raw is not supported when V6 is not enabled",
 			fields: fields{
-				Repo:   "github.com/oss/scorecard",
+				Repo:   "github.com/ossf/scorecard",
 				Commit: "HEAD",
 				Format: "raw",
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid filemode flagged",
+			fields: fields{
+				Repo:     "github.com/ossf/scorecard",
+				Commit:   "HEAD",
+				Format:   "default",
+				FileMode: "unsupported mode",
+			},
+			wantErr: true,
+		},
+		{
+			name: "git filemode is valid",
+			fields: fields{
+				Repo:     "github.com/ossf/scorecard",
+				Commit:   "HEAD",
+				Format:   "default",
+				FileMode: FileModeGit,
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
+		if tt.fields.FileMode == "" {
+			tt.fields.FileMode = FileModeArchive
+		}
 		t.Run(tt.name, func(t *testing.T) {
 			o := &Options{
 				Repo:              tt.fields.Repo,
@@ -96,9 +118,11 @@ func TestOptions_Validate(t *testing.T) {
 				Commit:            tt.fields.Commit,
 				LogLevel:          tt.fields.LogLevel,
 				Format:            tt.fields.Format,
+				FileMode:          tt.fields.FileMode,
 				NPM:               tt.fields.NPM,
 				PyPI:              tt.fields.PyPI,
 				RubyGems:          tt.fields.RubyGems,
+				Nuget:             tt.fields.Nuget,
 				PolicyFile:        tt.fields.PolicyFile,
 				ResultsFile:       tt.fields.ResultsFile,
 				ChecksToRun:       tt.fields.ChecksToRun,
@@ -108,8 +132,7 @@ func TestOptions_Validate(t *testing.T) {
 				EnableScorecardV6: tt.fields.EnableScorecardV6,
 			}
 			if o.EnableSarif {
-				os.Setenv(EnvVarEnableSarif, "1")
-				defer os.Unsetenv(EnvVarEnableSarif)
+				t.Setenv(EnvVarEnableSarif, "1")
 			}
 
 			if err := o.Validate(); (err != nil) != tt.wantErr {

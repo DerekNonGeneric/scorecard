@@ -59,12 +59,15 @@ const (
 )
 
 var (
-	// ErrorEmptyConfigValue indicates the value for the configuration option was empty.
-	ErrorEmptyConfigValue = errors.New("config value set to empty")
-	// ErrorValueConversion indicates an unexpected type was found for the value of the config option.
-	ErrorValueConversion = errors.New("unexpected type, cannot convert value")
-	// ErrorNoConfig indicates no config file was provided, or flag.Parse() was not called.
-	ErrorNoConfig = errors.New("no configuration file provided with --" + configFlag)
+	// some of these errors didn't follow naming conventions when they were introduced.
+	// for backward compatibility reasons, they can't be changed and have nolint directives.
+
+	// ErrEmptyConfigValue indicates the value for the configuration option was empty.
+	ErrEmptyConfigValue = errors.New("config value set to empty")
+	// ErrValueConversion indicates an unexpected type was found for the value of the config option.
+	ErrValueConversion = errors.New("unexpected type, cannot convert value")
+	// ErrNoConfig indicates no config file was provided, or flag.Parse() was not called.
+	ErrNoConfig = errors.New("no configuration file provided with --" + configFlag)
 	//go:embed config.yaml
 	configYAML     []byte
 	configFilename = flag.String(configFlag, configDefault, configUsage)
@@ -118,12 +121,12 @@ func getStringConfigValue(envVar string, byteValue []byte, fieldName, configName
 		return "", fmt.Errorf("error getting config value %s: %w", configName, err)
 	}
 	if value.Kind() != reflect.String {
-		return "", fmt.Errorf("%w: %s, %s", ErrorValueConversion, value.Type().Name(), configName)
+		return "", fmt.Errorf("%w: %s, %s", ErrValueConversion, value.Type().Name(), configName)
 	}
 	if value.String() != "" {
 		return value.String(), nil
 	}
-	return value.String(), fmt.Errorf("%w: %s", ErrorEmptyConfigValue, configName)
+	return value.String(), fmt.Errorf("%w: %s", ErrEmptyConfigValue, configName)
 }
 
 func getIntConfigValue(envVar string, byteValue []byte, fieldName, configName string) (int, error) {
@@ -139,7 +142,7 @@ func getIntConfigValue(envVar string, byteValue []byte, fieldName, configName st
 	case reflect.Int:
 		return int(value.Int()), nil
 	default:
-		return 0, fmt.Errorf("%w: %s, %s", ErrorValueConversion, value.Type().Name(), configName)
+		return 0, fmt.Errorf("%w: %s, %s", ErrValueConversion, value.Type().Name(), configName)
 	}
 }
 
@@ -151,12 +154,12 @@ func getFloat64ConfigValue(envVar string, byteValue []byte, fieldName, configNam
 
 	switch value.Kind() {
 	case reflect.String:
-		//nolint: wrapcheck, gomnd
+		//nolint:wrapcheck,gomnd
 		return strconv.ParseFloat(value.String(), 64)
 	case reflect.Float32, reflect.Float64:
 		return value.Float(), nil
 	default:
-		return 0, fmt.Errorf("%w: %s, %s", ErrorValueConversion, value.Type().Name(), configName)
+		return 0, fmt.Errorf("%w: %s, %s", ErrValueConversion, value.Type().Name(), configName)
 	}
 }
 
@@ -180,11 +183,11 @@ func getMapConfigValue(byteValue []byte, fieldName, configName, subMapName strin
 		return map[string]string{}, fmt.Errorf("error getting config value %s: %w", configName, err)
 	}
 	if value.Kind() != reflect.Map {
-		return map[string]string{}, fmt.Errorf("%w: %s, %s", ErrorValueConversion, value.Type().Name(), configName)
+		return map[string]string{}, fmt.Errorf("%w: %s, %s", ErrValueConversion, value.Type().Name(), configName)
 	}
 	subMap := value.MapIndex(reflect.ValueOf(subMapName))
 	if subMap.Kind() != reflect.Map {
-		return map[string]string{}, fmt.Errorf("%w: %s, %s", ErrorValueConversion, value.Type().Name(), configName)
+		return map[string]string{}, fmt.Errorf("%w: %s, %s", ErrValueConversion, value.Type().Name(), configName)
 	}
 	ret := map[string]string{}
 	iter := subMap.MapRange()
@@ -236,7 +239,7 @@ func GetRequestTopicURL() (string, error) {
 	return getStringConfigValue(requestTopicURL, configYAML, "RequestTopicURL", "request-topic-url")
 }
 
-// GetRequestSubscriptionURL returns the subscription name of the PubSub topic for cron job reuests.
+// GetRequestSubscriptionURL returns the subscription name of the PubSub topic for cron job requests.
 func GetRequestSubscriptionURL() (string, error) {
 	return getStringConfigValue(requestSubscriptionURL, configYAML, "RequestSubscriptionURL", "request-subscription-url")
 }
@@ -274,7 +277,7 @@ func GetShardSize() (int, error) {
 // GetWebhookURL returns the webhook URL to ping on a successful cron job completion.
 func GetWebhookURL() (string, error) {
 	url, err := getStringConfigValue(webhookURL, configYAML, "WebhookURL", "webhook-url")
-	if err != nil && !errors.Is(err, ErrorEmptyConfigValue) {
+	if err != nil && !errors.Is(err, ErrEmptyConfigValue) {
 		return url, err
 	}
 	return url, nil
@@ -324,7 +327,7 @@ func GetInputBucketPrefix() (string, error) {
 	if err != nil {
 		// TODO temporarily falling back to old variables until changes propagate to production
 		prefix, err := getStringConfigValue(inputBucketPrefix, configYAML, "InputBucketPrefix", "input-bucket-prefix")
-		if err != nil && !errors.Is(err, ErrorEmptyConfigValue) {
+		if err != nil && !errors.Is(err, ErrEmptyConfigValue) {
 			return "", err
 		}
 		return prefix, nil

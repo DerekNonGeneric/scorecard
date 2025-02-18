@@ -25,10 +25,10 @@ import (
 
 	"github.com/xeipuuv/gojsonschema"
 
-	"github.com/ossf/scorecard/v4/checker"
-	"github.com/ossf/scorecard/v4/finding"
-	"github.com/ossf/scorecard/v4/log"
-	"github.com/ossf/scorecard/v4/pkg"
+	"github.com/ossf/scorecard/v5/checker"
+	"github.com/ossf/scorecard/v5/finding"
+	"github.com/ossf/scorecard/v5/log"
+	"github.com/ossf/scorecard/v5/pkg/scorecard"
 )
 
 func jsonMockDocRead() *mockDoc {
@@ -66,7 +66,7 @@ func jsonMockDocRead() *mockDoc {
 	return &m
 }
 
-// nolint
+//nolint:gocognit
 func TestJSONOutput(t *testing.T) {
 	t.Parallel()
 
@@ -80,25 +80,25 @@ func TestJSONOutput(t *testing.T) {
 	}
 
 	checkDocs := jsonMockDocRead()
-
+	//nolint:govet
 	tests := []struct {
 		name        string
 		expected    string
 		showDetails bool
 		logLevel    log.Level
-		result      pkg.ScorecardResult
+		result      scorecard.Result
 	}{
 		{
 			name:        "check-1",
 			showDetails: true,
 			expected:    "./testdata/check1.json",
 			logLevel:    log.DebugLevel,
-			result: pkg.ScorecardResult{
-				Repo: pkg.RepoInfo{
+			result: scorecard.Result{
+				Repo: scorecard.RepoInfo{
 					Name:      repoName,
 					CommitSHA: repoCommit,
 				},
-				Scorecard: pkg.ScorecardInfo{
+				Scorecard: scorecard.ScorecardInfo{
 					Version:   scorecardVersion,
 					CommitSHA: scorecardCommit,
 				},
@@ -130,12 +130,12 @@ func TestJSONOutput(t *testing.T) {
 			showDetails: true,
 			expected:    "./testdata/check2.json",
 			logLevel:    log.DebugLevel,
-			result: pkg.ScorecardResult{
-				Repo: pkg.RepoInfo{
+			result: scorecard.Result{
+				Repo: scorecard.RepoInfo{
 					Name:      repoName,
 					CommitSHA: repoCommit,
 				},
-				Scorecard: pkg.ScorecardInfo{
+				Scorecard: scorecard.ScorecardInfo{
 					Version:   scorecardVersion,
 					CommitSHA: scorecardCommit,
 				},
@@ -166,12 +166,12 @@ func TestJSONOutput(t *testing.T) {
 			showDetails: true,
 			expected:    "./testdata/check3.json",
 			logLevel:    log.InfoLevel,
-			result: pkg.ScorecardResult{
-				Repo: pkg.RepoInfo{
+			result: scorecard.Result{
+				Repo: scorecard.RepoInfo{
 					Name:      repoName,
 					CommitSHA: repoCommit,
 				},
-				Scorecard: pkg.ScorecardInfo{
+				Scorecard: scorecard.ScorecardInfo{
 					Version:   scorecardVersion,
 					CommitSHA: scorecardCommit,
 				},
@@ -256,12 +256,12 @@ func TestJSONOutput(t *testing.T) {
 			showDetails: true,
 			expected:    "./testdata/check4.json",
 			logLevel:    log.DebugLevel,
-			result: pkg.ScorecardResult{
-				Repo: pkg.RepoInfo{
+			result: scorecard.Result{
+				Repo: scorecard.RepoInfo{
 					Name:      repoName,
 					CommitSHA: repoCommit,
 				},
-				Scorecard: pkg.ScorecardInfo{
+				Scorecard: scorecard.ScorecardInfo{
 					Version:   scorecardVersion,
 					CommitSHA: scorecardCommit,
 				},
@@ -346,12 +346,12 @@ func TestJSONOutput(t *testing.T) {
 			showDetails: true,
 			expected:    "./testdata/check5.json",
 			logLevel:    log.WarnLevel,
-			result: pkg.ScorecardResult{
-				Repo: pkg.RepoInfo{
+			result: scorecard.Result{
+				Repo: scorecard.RepoInfo{
 					Name:      repoName,
 					CommitSHA: repoCommit,
 				},
-				Scorecard: pkg.ScorecardInfo{
+				Scorecard: scorecard.ScorecardInfo{
 					Version:   scorecardVersion,
 					CommitSHA: scorecardCommit,
 				},
@@ -383,12 +383,12 @@ func TestJSONOutput(t *testing.T) {
 			showDetails: true,
 			expected:    "./testdata/check6.json",
 			logLevel:    log.WarnLevel,
-			result: pkg.ScorecardResult{
-				Repo: pkg.RepoInfo{
+			result: scorecard.Result{
+				Repo: scorecard.RepoInfo{
 					Name:      repoName,
 					CommitSHA: repoCommit,
 				},
-				Scorecard: pkg.ScorecardInfo{
+				Scorecard: scorecard.ScorecardInfo{
 					Version:   scorecardVersion,
 					CommitSHA: scorecardCommit,
 				},
